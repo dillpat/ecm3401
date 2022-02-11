@@ -22,6 +22,47 @@ class COLOR(Enum):
     blue=('DeepSkyBlue4','DeepSkyBlue2')
     yellow=('yellow2','yellow2')
 
+class coin:
+    """
+    
+    """
+
+    def __init__(self, parentMaze, x=None, y=None, value=10, weight=0.5):
+        """
+        
+        """
+        self._parentMaze=parentMaze
+        self.x=x
+        self.y=y 
+        self._parentMaze._coins.append(self)
+        self._value=value
+        self._weight=weight
+        self._collected=False
+        pass
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter
+    def x(self,newX):
+        self._x=newX
+
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self,newY):
+        self._y=newY
+
+    @property
+    # Gets the position of the agent
+    def position(self):
+        return (self.x,self.y)
+
+    
+    
 class agent:
     '''
     The agents can be placed on the maze.
@@ -62,12 +103,14 @@ class agent:
         self.filled=filled
         self.shape=shape
         self._orient=0
+        # Checks that the coordinates are in the maze
         if x is None:x=parentMaze.rows
         if y is None:y=parentMaze.cols
         self.x=x
         self.y=y
         self.footprints=footprints
         self._parentMaze._agents.append(self)
+        # Sets the agents goal
         if goal==None:
             self.goal=self._parentMaze._goal
         else:
@@ -98,6 +141,7 @@ class agent:
         else:
             self._coord=(y + w/2, x + 3*w/9,y + w/2, x + 3*w/9+w/4)
 
+        # Creating the agent shape and colour
         if(hasattr(self,'_head')):
             if self.footprints is False:
                 self._parentMaze._canvas.delete(self._head)
@@ -160,9 +204,11 @@ class agent:
                 pass
             self._parentMaze._redrawCell(self.x,self.y,theme=self._parentMaze.theme)
     @property
+    # Gets the position of the agent
     def position(self):
         return (self.x,self.y)
     @position.setter
+    # Gets the new position of the agentS
     def position(self,newpos):
         self.x=newpos[0]
         self.y=newpos[1]
@@ -208,7 +254,7 @@ class agent:
         self._parentMaze._canvas.coords(self._head,*self._coord)
         self._orient=(self._orient+1)%4
 
-
+    # Moves the agent in a direction
     def moveRight(self,event):
         if self._parentMaze.maze_map[self.x,self.y]['E']==True:
             self.y=self.y+1
@@ -270,7 +316,7 @@ class maze:
                 It will be a dictionary
         _win,_cell_width,_canvas -->    _win and )canvas are for Tkinter window and canvas
                                         _cell_width is cell width calculated automatically
-        _agents-->  A list of aganets on the maze
+        _agents-->  A list of agents on the maze
         markedCells-->  Will be used to mark some particular cell during
                         path trace by the agent.
         _
@@ -285,6 +331,7 @@ class maze:
         self._canvas=None
         self._agents=[]
         self.markCells=[]
+        self._coins=[]
 
     @property
     def grid(self):
@@ -336,12 +383,14 @@ class maze:
         _stack=[]
         _closed=[]
         self.theme=theme
+        # Target goal
         self._goal=(x,y)
         if(isinstance(theme,str)):
             if(theme in COLOR.__members__):
                 self.theme=COLOR[theme]
             else:
                 raise ValueError(f'{theme} is not a valid theme COLOR!')
+        # Prevents cells from being enclosed
         def blockedNeighbours(cell):
             n=[]
             for d in self.maze_map[cell].keys():
@@ -410,6 +459,7 @@ class maze:
             visited = {(self.rows,self.cols)}
             while len(frontier) > 0:
                 cell = frontier.popleft()
+                # Verify if the path in the W direction is open and finds the next cell in that direction and adds it to the nextCell
                 if self.maze_map[cell]['W'] and (cell[0],cell[1]-1) not in visited:
                     nextCell = (cell[0],cell[1]-1)
                     path[nextCell] = cell
@@ -596,7 +646,7 @@ class maze:
         self._LabWidth=26 # Space from the top for Labels
         self._win=Tk()
         self._win.state('zoomed')
-        self._win.title('PYTHON MAZE WORLD by Learning Orbis')
+        self._win.title('MAZE Level')
         
         scr_width=self._win.winfo_screenwidth()
         scr_height=self._win.winfo_screenheight()
@@ -684,7 +734,7 @@ class maze:
         def killAgent(a):
             '''
             if the agent should be killed after it reaches the Goal or completes the path
-            '''
+            ''' 
             for i in range(len(a._body)):
                 self._canvas.delete(a._body[i])
             self._canvas.delete(a._head) 
