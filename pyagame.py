@@ -22,46 +22,6 @@ class COLOR(Enum):
     blue=('DeepSkyBlue4','DeepSkyBlue2')
     yellow=('yellow2','yellow2')
 
-class coin:
-    """
-    
-    """
-
-    def __init__(self, parentMaze, x=None, y=None, value=10, weight=0.5):
-        """
-        
-        """
-        self._parentMaze=parentMaze
-        self.x=x
-        self.y=y 
-        self._parentMaze._coins.append(self)
-        self._value=value
-        self._weight=weight
-        self._collected=False
-        pass
-
-    @property
-    def x(self):
-        return self._x
-
-    @x.setter
-    def x(self,newX):
-        self._x=newX
-
-    @property
-    def y(self):
-        return self._y
-
-    @y.setter
-    def y(self,newY):
-        self._y=newY
-
-    @property
-    # Gets the position of the agent
-    def position(self):
-        return (self.x,self.y)
-
-    
     
 class agent:
     '''
@@ -208,7 +168,7 @@ class agent:
     def position(self):
         return (self.x,self.y)
     @position.setter
-    # Gets the new position of the agentS
+    # Sets the new position of the agentS
     def position(self,newpos):
         self.x=newpos[0]
         self.y=newpos[1]
@@ -489,6 +449,7 @@ class maze:
                 except:
                     print('Path to goal not found!')
                     return
+            print(fwdPath)
             return fwdPath
         # if maze is to be generated randomly
         if not loadMaze:
