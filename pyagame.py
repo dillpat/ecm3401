@@ -449,7 +449,7 @@ class maze:
                 except:
                     print('Path to goal not found!')
                     return
-            print(fwdPath)
+            #print(fwdPath)
             return fwdPath
         # if maze is to be generated randomly
         if not loadMaze:
