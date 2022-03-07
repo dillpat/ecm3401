@@ -1,13 +1,13 @@
 class Enemy:
 
-    def __init__(self, parentMaze,  x=None, y=None, value=10, health=10):
+    def __init__(self, parentMaze,  x=None, y=None, health=10):
         self._parentMaze=parentMaze
         self.x=x
         self.y=y
-        self._value=value
-        self._parentMaze._coins.append(self)
+        self._parentMaze._enemy.append(self)
         self.position=(self.x,self.y)
         self._health=health
+        self.defeated=False
         return
 
     """
@@ -44,9 +44,9 @@ class Enemy:
         self._collected = newState
         
     @property
-    def value(self):
-        return (self._value)
+    def health(self):
+        return (self._health)
 
-    @value.setter
-    def value(self, newValue):
-        self.value = newValue
+    @health.setter
+    def health(self, newHealth):
+        self.health = newHealth

@@ -30,7 +30,8 @@ class agent:
     Or they can be the physical agents (like robots)
     They can have two shapes (square or arrow)
     '''
-    def __init__(self,parentMaze,x=None,y=None,shape='square',goal=None,filled=False,footprints=False,color:COLOR=COLOR.blue):
+    def __init__(self,parentMaze,x=None,y=None,shape='square',goal=None,filled=False,footprints=False,color:COLOR=COLOR.blue,
+                health=80):
         '''
         parentmaze-->  The maze on which agent is placed.
         x,y-->  Position of the agent i.e. cell inside which agent will be placed
@@ -77,6 +78,7 @@ class agent:
             self.goal=goal
         self._body=[]
         self.position=(self.x,self.y)
+        self.health=health
         
     @property
     def x(self):
@@ -292,6 +294,7 @@ class maze:
         self._agents=[]
         self.markCells=[]
         self._coins=[]
+        self._enemy=[]
 
     @property
     def grid(self):
