@@ -1,3 +1,4 @@
+from xml.etree.ElementTree import C14NWriterTarget
 from pyagame import maze,agent,textLabel,COLOR
 from collections import deque
 import numpy as np
@@ -155,41 +156,53 @@ def findNearestEnemy(m, start_position, enemy_list):
 def combatNearestEnemy(m, enemy_list, player_health = 80):
     current_health = player_health
     start_position = (m.rows,m.cols)
-    enemy_killed_track = 0
-    for i in range(len(enemy_list)):
+    enemy_killed = 0
+    while enemy_killed < len(enemy_list):
         nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
         bSearch,bfsPath,fwdPath,score = BFS(m, start_position, nearest_enemy)
         if ('A' in m.maze_map[nearest_enemy]): # Checks for an enemy in cell
             enemy = m.maze_map[nearest_enemy]['A']
             if not enemy.defeated:
-                playing_health = combat(enemy, current_health)
-                enemy_killed_track += 1
+                current_health = combat(enemy, current_health)
+                if enemy.defeated:
+                    enemy_killed += 1
+                current_health = restoreHealth(m, current_health, enemy)
                 # current health will tell you if enemy is defeated
-                if playing_health == 0:
-                    print("End health :", playing_health)
-                    print("Number of enemies killed: ", enemy_killed_track)
+                if current_health == 0:
+                    print("End health :", current_health)
+                    #print("Number of enemies killed: ", enemy_killed_track)
                     break
                     #combatNearestEnemy(m, enemy_list)
                     #if nearest_enemy == (1,1):
                         #break
-                print( "Player_health", playing_health)
+                print( "Player_health", current_health)
+                print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
     return current_health
-# Some runs when the health will go up somehow when it shouldn't e.g. it goes up form 20 to the next run being 70
-def combat(enemy, current_health):
+# ERROR It is fighting 8 times, so when it loses to an enemy restores health and travels back that counts as 2.
+def combat(enemy, player_health):
     #player_health = 80
-    while current_health > 0:
+    while player_health > 0:
         if random.randint(0,10) > 8:
             print("enemy defeated")
             enemy.defeated = True
             break
         else:
-            current_health -= enemy.health
-    print("Combat health: ", current_health)
+            player_health -= enemy.health
+    print("fighting health: ", player_health)
+    return player_health
+
+"""
+return back to start method from current position then restore player_health to 80
+"""
+def restoreHealth(m, current_health, enemy):
+    home = (m.rows,m.cols)
+    current_position = enemy.position
+    if current_health == 0:
+        bSearch,bfsPath,fwdPath,score = BFS(m, current_position, home)
+        current_health = 80
+        #print("Path: ", fwdPath)
     return current_health
-
-
-
 
 # def fightEnemy(m, start_position, enemy_list):
 #     nearest_enemy_to_start = findNearestEnemy(m, start_position, enemy_list)
@@ -201,6 +214,50 @@ def combat(enemy, current_health):
 #             nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
 #         else:
 #             player_health -= 10
+
+
+def divideQuadrants(m):
+    cNW = []
+    cNE = []
+    cSW = []
+    cSE = []
+    width_max = m.rows
+    height_max = m.cols
+    half_width = width_max / 2
+    half_height = height_max /2
+
+    # Creating the NW quadrant
+    cNW.append((1,1))
+    cNW.append((half_width, half_height))
+    cNW.append((1, half_height))
+    cNW.append((half_width, 1))
+
+    # Creating the NE quadrant
+    cNE.append((width_max, 1))
+    cNE.append((width_max, half_height))
+    cNE.append((half_width, half_height))
+    cNE.append((half_width,1))
+
+    # Creating the SW quadrant
+    cSW.append((1, half_height))
+    cSW.append((half_width, half_height))
+    cSW.append((1, height_max))
+    cSW.append((half_width, height_max))
+
+    # Creating the SE quadrant
+    cSE.append((width_max, half_height))
+    cSE.append((width_max, height_max))
+    cSE.append((half_width, height_max))
+    cSE.append((half_width, half_height))
+
+    print("NW", cNW)
+    print("NE", cNE)
+    print("sW", cSW)
+    print("SE", cSE)
+
+    return cNW, cNE, cSW, cSE
+
+
 
 
 if __name__=='__main__':
@@ -215,23 +272,35 @@ if __name__=='__main__':
     #randomlyCollectAllCoins(m, coin_position_list)
     #score = collectNearestCoins(m, coin_position_list)
     #print("Score: ", score)
-    start_position = (m.rows,m.cols)
-    enemy_list = addEnemy(m)
+    #start_position = (m.rows,m.cols)
+    #enemy_list = addEnemy(m)
     #print("enemy list", enemy_list)
-    findNearestEnemy(m, start_position, enemy_list)
-    combatNearestEnemy(m, enemy_list,)
+    #findNearestEnemy(m, start_position, enemy_list)
+    #combatNearestEnemy(m, enemy_list)
 
+    divideQuadrants(m)
     #m.run()
 
 
+    """
+    How to implement the coins and enemeies as entropy values
+    How to define the maze into quadrants
+    Read up to page 36 in python book
+    Do some leading change
+    """
+
 
     """
-    How the enemy works:
-    Player start off with 80 health
-    Each enemy has 10 health
-    The player can only regenerate their health when it reaches 0
-    Player travels back to start, (10,10) when he needs more health
-    Player travels to enemy and in order to defeat them a fighting method is used
-    This fighting method randomly draws a number from 1-10 if the number is above 2 then the enemy is defeated
-    Player travels to the closest enemy each time
+    Divide the maze into 4 quadrants
+    Give one quadrant a random probability bias from 0.5-1 to have a bias
+    Divide the remaining probability into the other 3 quadrants
+    4 parameters for the random probabiltiy of coins spawning
+    4 parameters for the random probabiltiy of enemies spawning
+    During bayeisian you run this configuration 10 times so the algorithm can learn from it before you run the optimization
+    """
+
+    """
+    Genrate 4 values where the sum is 1
+    Each quadrant has the weight(which is = to the probability)
+
     """
