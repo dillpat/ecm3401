@@ -190,7 +190,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
                 print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
     return current_health
-# ERROR It is fighting 8 times, so when it loses to an enemy restores health and travels back that counts as 2.
+
 def combat(enemy, player_health):
     #player_health = 80
     while player_health > 0:
@@ -283,11 +283,7 @@ def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE
     distribution_dict["qSW"].probability = (pSW // MIN_PROB) * MIN_PROB
     distribution_dict["qSE"].probability = (pSE // MIN_PROB) * MIN_PROB
 
-
-"""
-FIXME: MAKE SURE THAT 8 COINS ARE PLACED ON THE MAZE EACH TIME  
-"""  
-def playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE):
+def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
 
     # Setting the probability of coins in each quadrant
     cNW, cNE, cSW, cSE = divideQuadrants(m)
@@ -309,9 +305,12 @@ def playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE):
                 coins_list += addCoins(m, quadrant, number)
             print("Coin Quadrant: ", quadrant.base)
             print("Coin list: ", coins_list)
+    return coins_list
 
+def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     # Setting the probability of enemies in each quadrant
-    enemy_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
+    eNW, eNE, eSW, eSE = divideQuadrants(m)
+    enemy_quadrant_dict = createQuadrantDictionary(m, eNW, eNE, eSW, eSE)
     setProbability(m, enemy_quadrant_dict, epNW, epNE, epSW, epSE)
 
     # Populate quadrants with enemies
@@ -329,6 +328,8 @@ def playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE):
                 enemy_list += addEnemy(m, quadrant, number)
             print("Enemy Quadrant: ", quadrant.base)
             print("Enemy List: ", enemy_list)
+    
+    return enemy_list
 
 if __name__=='__main__':
 
@@ -345,8 +346,6 @@ if __name__=='__main__':
     #start_position = (m.rows,m.cols)
     #enemy_list = addEnemy(m)
     #print("enemy list", enemy_list)
-    #findNearestEnemy(m, start_position, enemy_list)
-    #combatNearestEnemy(m, enemy_list)
 
     #divideQuadrants(m)
 
@@ -355,16 +354,16 @@ if __name__=='__main__':
     cpNE = 0.453
     cpSW = 0.345
     cpSE = 0.079
+    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
     # Quadrant probabiltiies for enemy
     epNW = 0.244
     epNE = 0.700
     epSW = 0.020
     epSE = 0.036
+    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE)
-    
-    #m.run()
+    combatNearestEnemy(m, enemy_list)
 
 
     """
