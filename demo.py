@@ -1,4 +1,3 @@
-from xml.etree.ElementTree import C14NWriterTarget
 from pyagame import maze,agent,textLabel,COLOR
 from collections import deque
 import numpy as np
@@ -6,6 +5,13 @@ from Coin import Coin
 from Enemy import Enemy
 from Quadrant import Quadrant
 import random
+
+MAZE_ROWS = 10
+MAZE_COLS = 10
+MAX_ASSET = 8
+MAX_COIN = MAX_ASSET
+MAX_ENEMY = MAX_ASSET
+MIN_PROB = (1 / MAX_COIN)
 
 def BFS(m,start=None, goal=None):
     if start is None:
@@ -60,17 +66,19 @@ def BFS(m,start=None, goal=None):
     return bSearch,bfsPath,fwdPath,currentScore
 
 
-def addCoins(m, quadrant, number=8):
+def addCoins(m, quadrant, number=MAX_COIN):
     coin_position_list = {}
     while len(coin_position_list) < number:
         cell = np.random.randint(low=0, high=5, size=2)
-        x=cell[0] + quadrant.base[0]
-        y=cell[1] + quadrant.base[1]
+        cell[0] += quadrant.base[0]
+        cell[1] += quadrant.base[1]
+        x=cell[0]
+        y=cell[1]
         coin = Coin(m, x, y)
         m.maze_map[x,y]['C'] = coin
         #print(coin.cell)
         coin_position_list[x,y]=cell
-    #print(len(coin_position_list)," : ", coin_position_list)
+    print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
     return coin_position_list
 
 def randomlyCollectAllCoins(m, coin_position_list):
@@ -125,17 +133,19 @@ def collectNearestCoins(m, coin_position_list, coin_target = 80):
             break
     return currentScore
 
-def addEnemy(m, enemy_distribution,number=8):
+def addEnemy(m, quadrant,number=MAX_ENEMY):
     enemy_list = {}
     while len(enemy_list) < number:
-        cell = np.random.randint(low=1, high=11, size=2)
+        cell = np.random.randint(low=1, high=5, size=2)
+        cell[0] += quadrant.base[0]
+        cell[1] += quadrant.base[1]
         x=cell[0]
         y=cell[1]
         enemy = Enemy(m, x, y)
         m.maze_map[x,y]['A'] = enemy
         #print(enemy)
         enemy_list[x,y]=cell
-    #print("enemy_list: ", len(enemy_list)," : ", enemy_list)
+    print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
     #print("maze map: ", m.maze_map)
     return enemy_list
 
@@ -228,33 +238,33 @@ def divideQuadrants(m):
     half_height = height_max // 2
 
     # Creating the NW quadrant
-    cNW.append((0,0))
+    cNW.append((1,1)) # (1,1)
     cNW.append((half_width, half_height))
     cNW.append((1, half_height))
     cNW.append((half_width, 1))
 
     # Creating the NE quadrant
+    cNE.append((half_width + 1, 1)) # (6,1)
     cNE.append((width_max, 1))
     cNE.append((width_max, half_height))
-    cNE.append((half_width, half_height))
-    cNE.append((half_width,1))
+    cNE.append((half_width + 1, half_height))
 
     # Creating the SW quadrant
-    cSW.append((1, half_height))
-    cSW.append((half_width, half_height))
+    cSW.append((1, half_height + 1)) # (1,6)
+    cSW.append((half_width, half_height + 1))
     cSW.append((1, height_max))
     cSW.append((half_width, height_max))
 
     # Creating the SE quadrant
-    cSE.append((width_max, half_height))
+    cSE.append((half_width + 1, half_height + 1)) # (6,6)
+    cSE.append((width_max, half_height + 1))
     cSE.append((width_max, height_max))
-    cSE.append((half_width, height_max))
-    cSE.append((half_width, half_height))
+    cSE.append((half_width + 1, height_max))
 
-    print("NW", cNW)
-    print("NE", cNE)
-    print("sW", cSW)
-    print("SE", cSE)
+    #print("NW", cNW)
+    #print("NE", cNE)
+    #print("sW", cSW)
+    #print("SE", cSE)
 
     return cNW, cNE, cSW, cSE
 
@@ -265,45 +275,64 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
                          "qSE":Quadrant(m, cSE)}
 
     return distribution_dict
-"""
-FIXME: MOVE THESE LATER TO TOP OF FILE
-"""
-MAX_ASSET = 8
-MAX_COIN = MAX_ASSET
-MAX_ENEMY = MAX_ASSET
-MIN_PROB = (1 / MAX_COIN)
+
+
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-    distribution_dict["qNW"].proability = (pNW // MIN_PROB) * MIN_PROB
-    distribution_dict["qNE"].proability = (pNE // MIN_PROB) * MIN_PROB
-    distribution_dict["qSW"].proability = (pSW // MIN_PROB) * MIN_PROB
-    distribution_dict["qSE"].proability = (pSE // MIN_PROB) * MIN_PROB
+    distribution_dict["qNW"].probability = (pNW // MIN_PROB) * MIN_PROB
+    distribution_dict["qNE"].probability = (pNE // MIN_PROB) * MIN_PROB
+    distribution_dict["qSW"].probability = (pSW // MIN_PROB) * MIN_PROB
+    distribution_dict["qSE"].probability = (pSE // MIN_PROB) * MIN_PROB
 
 
 """
 FIXME: MAKE SURE THAT 8 COINS ARE PLACED ON THE MAZE EACH TIME  
 """  
 def playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE):
+
     # Setting the probability of coins in each quadrant
     cNW, cNE, cSW, cSE = divideQuadrants(m)
     coin_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
     setProbability(m, coin_quadrant_dict, cpNW, cpNE, cpSW, cpSE)
+
+    # Populate quadrants with coins
     coins_list = []
-    for quadrant in coin_quadrant_dict:
-        number = int(MAX_COIN * quadrant.probability)
-        if len(coins_list) >= MAX_COIN:
-            break
-        if number:
-            coins_list += addCoins(m, quadrant, number)
+    while len(coins_list) < MAX_COIN:
+        for quadrant in coin_quadrant_dict.values():
+            print("Coin Quad:", quadrant)
+            number = int(MAX_COIN * quadrant.probability)
+            if len(coins_list) >= MAX_COIN:
+                break
+            if number:
+                total_coins = len(coins_list)
+                if total_coins + number > MAX_COIN:
+                    number = MAX_COIN - total_coins
+                coins_list += addCoins(m, quadrant, number)
+            print("Coin Quadrant: ", quadrant.base)
+            print("Coin list: ", coins_list)
 
     # Setting the probability of enemies in each quadrant
     enemy_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
     setProbability(m, enemy_quadrant_dict, epNW, epNE, epSW, epSE)
-    addEnemy(m, enemy_quadrant_dict)
 
+    # Populate quadrants with enemies
+    enemy_list = []
+    while len(enemy_list) < MAX_ENEMY:
+        for quadrant in enemy_quadrant_dict.values():
+            print("Enemy Quad:", quadrant)
+            number = int(MAX_ENEMY * quadrant.probability)
+            if len(enemy_list) >= MAX_ENEMY:
+                break
+            if number:
+                total_enemy = len(enemy_list)
+                if total_enemy + number > MAX_ENEMY:
+                    number = MAX_ENEMY - total_enemy
+                enemy_list += addEnemy(m, quadrant, number)
+            print("Enemy Quadrant: ", quadrant.base)
+            print("Enemy List: ", enemy_list)
 
 if __name__=='__main__':
 
-    m=maze(10,10)
+    m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=60)
     #coin_position_list = addCoins(m)
     #print("Coin position list", coin_position_list)
@@ -321,15 +350,20 @@ if __name__=='__main__':
 
     #divideQuadrants(m)
 
-    # Setting the probability of coins in each quadrant
-    cNW, cNE, cSW, cSE = divideQuadrants(m)
-    coin_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
-    setProbability(m, coin_quadrant_dict, cpNW = 0.25, cpNE = 0.25, cpSW = 0.25, cpSE = 0.25)
+    # Quadrant probabilities for coin
+    cpNW = 0.123
+    cpNE = 0.453
+    cpSW = 0.345
+    cpSE = 0.079
 
-    # Setting the probability of enemies in each quadrant
-    enemy_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
-    setProbability(m, enemy_quadrant_dict, epNW = 0.25, epNE = 0.25, epSW = 0.25, epSE = 0.25)
+    # Quadrant probabiltiies for enemy
+    epNW = 0.244
+    epNE = 0.700
+    epSW = 0.020
+    epSE = 0.036
 
+    playGame(m,  cpNW, cpNE, cpSW, cpSE,  epNW, epNE, epSW, epSE)
+    
     #m.run()
 
 
