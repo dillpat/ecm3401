@@ -63,7 +63,7 @@ def BFS(m,start=None, goal=None):
     while cell!=(start):
         fwdPath[bfsPath[cell]]=cell
         cell=bfsPath[cell]
-    return bSearch,bfsPath,fwdPath,currentScore
+    return bSearch,bfsPath,fwdPath
 
 
 def addCoins(m, quadrant, number=MAX_COIN):
@@ -107,7 +107,7 @@ def findNearestCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,bfsPath,fwdPath,score = BFS(m, start_position, cell)
+            bSearch,bfsPath,fwdPath = BFS(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_coin_cell = cell
@@ -118,20 +118,23 @@ def findNearestCoin(m, start_position, coin_position_list):
 def collectNearestCoins(m, coin_position_list, coin_target = 80):
     start_position = (m.rows,m.cols)
     currentScore = 0
+    steps = 0
     for i in range(len(coin_position_list)):
         nearest_coin = findNearestCoin(m, start_position, coin_position_list)
-        bSearch,bfsPath,fwdPath,score = BFS(m, start_position, nearest_coin)
+        bSearch,bfsPath,fwdPath = BFS(m, start_position, nearest_coin)
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
                 #print("found coin", coin)
                 coin.collected = True
                 currentScore += coin.value
+                steps += (len(fwdPath)+1)
                 #print("Coin Value: ", currentScore, coin.value)
         start_position = nearest_coin
         if currentScore >= coin_target:
             break
-    return currentScore
+        print("steps: ", steps)
+    return currentScore, steps
 
 def addEnemy(m, quadrant,number=MAX_ENEMY):
     enemy_list = {}
@@ -156,28 +159,36 @@ def findNearestEnemy(m, start_position, enemy_list):
     distance = 100000
     for cell in enemy_list:
         if not m.maze_map[cell]['A'].defeated: 
-            bSearch,bfsPath,fwdPath,score = BFS(m, start_position, cell)
+            bSearch,bfsPath,fwdPath = BFS(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
     #print("Distance", distance)
     print("Nearest Enemy Cell", nearest_enemy_cell)
     return nearest_enemy_cell
+"""
 
+FOR FUNC BELOW SHOULD RESTORE HEALTH FUNCTION NOT BE IN THE IF STATEMENT WHEN CURRENT HEALTH == 0
+SHOULD THERE NOT BE A CHECK THAT THE RESTORE HEALTH FUNCTION IS ONLY RAN WHEN THE HEALTH IS 0
+
+"""
 def combatNearestEnemy(m, enemy_list, player_health = 80):
     current_health = player_health
     start_position = (m.rows,m.cols)
     enemy_killed = 0
+    steps = 0
     while enemy_killed < len(enemy_list):
         nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
-        bSearch,bfsPath,fwdPath,score = BFS(m, start_position, nearest_enemy)
+        bSearch,bfsPath,fwdPath = BFS(m, start_position, nearest_enemy)
         if ('A' in m.maze_map[nearest_enemy]): # Checks for an enemy in cell
             enemy = m.maze_map[nearest_enemy]['A']
             if not enemy.defeated:
                 current_health = combat(enemy, current_health)
                 if enemy.defeated:
                     enemy_killed += 1
-                current_health = restoreHealth(m, current_health, enemy)
+                    steps += (len(fwdPath)+1)
+                current_health, stepsRH = restoreHealth(m, current_health, enemy)
+                steps += stepsRH
                 # current health will tell you if enemy is defeated
                 if current_health == 0:
                     print("End health :", current_health)
@@ -189,7 +200,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
                 print( "Player_health", current_health)
                 print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
-    return current_health
+    return current_health, steps
 
 def combat(enemy, player_health):
     #player_health = 80
@@ -209,11 +220,13 @@ return back to start method from current position then restore player_health to 
 def restoreHealth(m, current_health, enemy):
     home = (m.rows,m.cols)
     current_position = enemy.position
+    steps = 0
     if current_health == 0:
-        bSearch,bfsPath,fwdPath,score = BFS(m, current_position, home)
+        bSearch,bfsPath,fwdPath = BFS(m, current_position, home)
+        steps += (len(fwdPath)+1)
         current_health = 80
         #print("Path: ", fwdPath)
-    return current_health
+    return current_health, steps
 
 # def fightEnemy(m, start_position, enemy_list):
 #     nearest_enemy_to_start = findNearestEnemy(m, start_position, enemy_list)
@@ -331,6 +344,38 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     
     return enemy_list
 
+def objective(*args, **kwargs):
+
+    m=maze(MAZE_ROWS, MAZE_COLS)
+    m.CreateMaze(loopPercent=60)
+
+    # Quadrant probabilities for coin
+    cpNW = 0.123
+    cpNE = 0.453
+    cpSW = 0.345
+    cpSE = 0.079
+    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+
+    # Quadrant probabiltiies for enemy
+    epNW = 0.244
+    epNE = 0.700
+    epSW = 0.020
+    epSE = 0.036
+    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+
+    steps_coins = collectNearestCoins(m, coin_list)[1]
+    # or
+    #_, steps = steps = collectNearestCoins(m, coin_list)[1]
+
+    steps_enemy = combatNearestEnemy(m, enemy_list)[1]
+
+    total_steps = steps_coins + steps_enemy
+    return total_steps
+
+"""
+FIXME: MAKE SURE IT RETURNS THE STEPS TAKEN
+"""
+
 if __name__=='__main__':
 
     m=maze(MAZE_ROWS, MAZE_COLS)
@@ -363,7 +408,7 @@ if __name__=='__main__':
     epSE = 0.036
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    combatNearestEnemy(m, enemy_list)
+    #combatNearestEnemy(m, enemy_list)
 
 
     """
