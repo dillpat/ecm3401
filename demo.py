@@ -5,6 +5,8 @@ from Coin import Coin
 from Enemy import Enemy
 from Quadrant import Quadrant
 import random
+from skopt import gp_minimize
+from skopt.space import Real
 
 MAZE_ROWS = 10
 MAZE_COLS = 10
@@ -163,15 +165,10 @@ def findNearestEnemy(m, start_position, enemy_list):
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
-    #print("Distance", distance)
+    print("Distance", distance)
     print("Nearest Enemy Cell", nearest_enemy_cell)
     return nearest_enemy_cell
-"""
 
-FOR FUNC BELOW SHOULD RESTORE HEALTH FUNCTION NOT BE IN THE IF STATEMENT WHEN CURRENT HEALTH == 0
-SHOULD THERE NOT BE A CHECK THAT THE RESTORE HEALTH FUNCTION IS ONLY RAN WHEN THE HEALTH IS 0
-
-"""
 def combatNearestEnemy(m, enemy_list, player_health = 80):
     current_health = player_health
     start_position = (m.rows,m.cols)
@@ -187,19 +184,20 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
                 if enemy.defeated:
                     enemy_killed += 1
                     steps += (len(fwdPath)+1)
-                current_health, stepsRH = restoreHealth(m, current_health, enemy)
-                steps += stepsRH
                 # current health will tell you if enemy is defeated
-                if current_health == 0:
+                if current_health == 0 and enemy_killed < len(enemy_list):
+                    current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
+                    steps += stepsRH
+                    nearest_enemy = home
                     print("End health :", current_health)
                     #print("Number of enemies killed: ", enemy_killed_track)
-                    break
                     #combatNearestEnemy(m, enemy_list)
                     #if nearest_enemy == (1,1):
                         #break
                 print( "Player_health", current_health)
                 print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
+    print("TOTAL STEP: ", steps)
     return current_health, steps
 
 def combat(enemy, player_health):
@@ -226,7 +224,9 @@ def restoreHealth(m, current_health, enemy):
         steps += (len(fwdPath)+1)
         current_health = 80
         #print("Path: ", fwdPath)
-    return current_health, steps
+    else:
+        home = current_position
+    return current_health, steps, home
 
 # def fightEnemy(m, start_position, enemy_list):
 #     nearest_enemy_to_start = findNearestEnemy(m, start_position, enemy_list)
@@ -344,37 +344,34 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     
     return enemy_list
 
-def objective(*args, **kwargs):
+def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
 
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=60)
 
     # Quadrant probabilities for coin
-    cpNW = 0.123
-    cpNE = 0.453
-    cpSW = 0.345
-    cpSE = 0.079
+    # cpNW = 0.123
+    # cpNE = 0.453
+    # cpSW = 0.345
+    # cpSE = 0.079
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
     # Quadrant probabiltiies for enemy
-    epNW = 0.244
-    epNE = 0.700
-    epSW = 0.020
-    epSE = 0.036
+    # epNW = 0.244
+    # epNE = 0.700
+    # epSW = 0.020
+    # epSE = 0.036
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    steps_coins = collectNearestCoins(m, coin_list)[1]
+    ##steps_coins = collectNearestCoins(m, coin_list)[1]
     # or
-    #_, steps = steps = collectNearestCoins(m, coin_list)[1]
+    _, steps_coins = collectNearestCoins(m, coin_list)
 
-    steps_enemy = combatNearestEnemy(m, enemy_list)[1]
+    #steps_enemy = combatNearestEnemy(m, enemy_list)[1]
+    _, steps_enemy = combatNearestEnemy(m, enemy_list)
 
     total_steps = steps_coins + steps_enemy
     return total_steps
-
-"""
-FIXME: MAKE SURE IT RETURNS THE STEPS TAKEN
-"""
 
 if __name__=='__main__':
 
@@ -394,42 +391,36 @@ if __name__=='__main__':
 
     #divideQuadrants(m)
 
-    # Quadrant probabilities for coin
+    #Quadrant probabilities for coin
     cpNW = 0.123
     cpNE = 0.453
     cpSW = 0.345
     cpSE = 0.079
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
-    # Quadrant probabiltiies for enemy
+    #Quadrant probabiltiies for enemy
     epNW = 0.244
     epNE = 0.700
     epSW = 0.020
     epSE = 0.036
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    #combatNearestEnemy(m, enemy_list)
+    combatNearestEnemy(m, enemy_list)
 
+    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
+    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
+    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
+    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
 
-    """
-    How to implement the coins and enemeies as entropy values
-    How to define the maze into quadrants
-    Read up to page 36 in python book
-    Do some leading change
-    """
+    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
+    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
+    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
+    # epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
 
+    # dimensions = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    """
-    Divide the maze into 4 quadrants
-    Give one quadrant a random probability bias from 0.5-1 to have a bias
-    Divide the remaining probability into the other 3 quadrants
-    4 parameters for the random probabiltiy of coins spawning
-    4 parameters for the random probabiltiy of enemies spawning
-    During bayeisian you run this configuration 10 times so the algorithm can learn from it before you run the optimization
-    """
+    # res = gp_minimize(objective, dimensions = dimensions, n_calls = 10)
 
-    """
-    Genrate 4 values where the sum is 1
-    Each quadrant has the weight(which is = to the probability)
+    # print("Best Result: ", res.fun)
 
-    """
+    # print("Best Paramters: ", res.x)
