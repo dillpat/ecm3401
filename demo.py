@@ -11,6 +11,7 @@ from skopt.space import Real
 MAZE_ROWS = 10
 MAZE_COLS = 10
 MAX_ASSET = 8
+MAZE_DIFFICULTY = 7
 MAX_COIN = MAX_ASSET
 MAX_ENEMY = MAX_ASSET
 MIN_PROB = (1 / MAX_COIN)
@@ -68,20 +69,22 @@ def BFS(m,start=None, goal=None):
     return bSearch,bfsPath,fwdPath
 
 
-def addCoins(m, quadrant, number=MAX_COIN):
-    coin_position_list = {}
-    while len(coin_position_list) < number:
+def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
+    coin_count = 0
+    while coin_count < number:
         cell = np.random.randint(low=0, high=5, size=2)
         cell[0] += quadrant.base[0]
         cell[1] += quadrant.base[1]
         x=cell[0]
         y=cell[1]
         coin = Coin(m, x, y)
+        if 'C' not in m.maze_map[x,y].keys():
+            coin_count += 1
         m.maze_map[x,y]['C'] = coin
         #print(coin.cell)
         coin_position_list[x,y]=cell
     print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
-    return coin_position_list
+
 
 def randomlyCollectAllCoins(m, coin_position_list):
     start=(m.rows,m.cols)
@@ -138,21 +141,24 @@ def collectNearestCoins(m, coin_position_list, coin_target = 80):
         print("steps: ", steps)
     return currentScore, steps
 
-def addEnemy(m, quadrant,number=MAX_ENEMY):
-    enemy_list = {}
-    while len(enemy_list) < number:
+def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
+    #import pdb; pdb.set_trace()
+    enemy_count = 0
+    while enemy_count < number:
         cell = np.random.randint(low=1, high=5, size=2)
         cell[0] += quadrant.base[0]
         cell[1] += quadrant.base[1]
         x=cell[0]
         y=cell[1]
         enemy = Enemy(m, x, y)
+        if 'A' not in m.maze_map[x,y].keys():
+            enemy_count += 1
         m.maze_map[x,y]['A'] = enemy
         #print(enemy)
         enemy_list[x,y]=cell
     print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
     #print("maze map: ", m.maze_map)
-    return enemy_list
+
 
 def findNearestEnemy(m, start_position, enemy_list):
     """
@@ -167,6 +173,8 @@ def findNearestEnemy(m, start_position, enemy_list):
                 nearest_enemy_cell = cell
     print("Distance", distance)
     print("Nearest Enemy Cell", nearest_enemy_cell)
+    #if nearest_enemy_cell == (1,1) and distance == 100000:
+        #import pdb; pdb.set_trace()
     return nearest_enemy_cell
 
 def combatNearestEnemy(m, enemy_list, player_health = 80):
@@ -185,7 +193,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
                     enemy_killed += 1
                     steps += (len(fwdPath)+1)
                 # current health will tell you if enemy is defeated
-                if current_health == 0 and enemy_killed < len(enemy_list):
+                if current_health == 0:
                     current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
                     steps += stepsRH
                     nearest_enemy = home
@@ -203,7 +211,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
 def combat(enemy, player_health):
     #player_health = 80
     while player_health > 0:
-        if random.randint(0,10) > 8:
+        if random.randint(0,10) > MAZE_DIFFICULTY:
             print("enemy defeated")
             enemy.defeated = True
             break
@@ -304,21 +312,23 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
     setProbability(m, coin_quadrant_dict, cpNW, cpNE, cpSW, cpSE)
 
     # Populate quadrants with coins
-    coins_list = []
-    while len(coins_list) < MAX_COIN:
+    coin_cells = {}
+    while len(coin_cells) < MAX_COIN:
         for quadrant in coin_quadrant_dict.values():
             print("Coin Quad:", quadrant)
             number = int(MAX_COIN * quadrant.probability)
-            if len(coins_list) >= MAX_COIN:
+            if len(coin_cells) >= MAX_COIN:
                 break
             if number:
-                total_coins = len(coins_list)
+                total_coins = len(coin_cells)
                 if total_coins + number > MAX_COIN:
                     number = MAX_COIN - total_coins
-                coins_list += addCoins(m, quadrant, number)
+                addCoins(m, quadrant, coin_cells, number)
             print("Coin Quadrant: ", quadrant.base)
-            print("Coin list: ", coins_list)
-    return coins_list
+            print("Coin dict: ", coin_cells)
+
+    print("Coin list: ", list(coin_cells))        
+    return list(coin_cells)
 
 def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     # Setting the probability of enemies in each quadrant
@@ -327,24 +337,37 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     setProbability(m, enemy_quadrant_dict, epNW, epNE, epSW, epSE)
 
     # Populate quadrants with enemies
-    enemy_list = []
-    while len(enemy_list) < MAX_ENEMY:
+    enemy_cells = {}
+    while len(enemy_cells) < MAX_ENEMY:
         for quadrant in enemy_quadrant_dict.values():
             print("Enemy Quad:", quadrant)
             number = int(MAX_ENEMY * quadrant.probability)
-            if len(enemy_list) >= MAX_ENEMY:
+            if len(enemy_cells) >= MAX_ENEMY:
                 break
             if number:
-                total_enemy = len(enemy_list)
+                total_enemy = len(enemy_cells)
                 if total_enemy + number > MAX_ENEMY:
                     number = MAX_ENEMY - total_enemy
-                enemy_list += addEnemy(m, quadrant, number)
+                addEnemy(m, quadrant, enemy_cells, number)
             print("Enemy Quadrant: ", quadrant.base)
-            print("Enemy List: ", enemy_list)
+            print("Enemy dict: ", enemy_cells)
     
-    return enemy_list
+    print("enemy List: ", list(enemy_cells))
+    return list(enemy_cells)
 
-def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
+
+#def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
+def objective(dimensions):
+    #import pdb; pdb.set_trace()
+    cpNW = dimensions[0]
+    cpNE = dimensions[1]
+    cpSW = dimensions[2]
+    cpSE = dimensions[3]
+
+    epNW = dimensions[4]
+    epNE = dimensions[5]
+    epSW = dimensions[6]
+    epSE = dimensions[7]
 
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=60)
@@ -392,35 +415,36 @@ if __name__=='__main__':
     #divideQuadrants(m)
 
     #Quadrant probabilities for coin
-    cpNW = 0.123
-    cpNE = 0.453
-    cpSW = 0.345
-    cpSE = 0.079
-    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+    # cpNW = 0.123
+    # cpNE = 0.453
+    # cpSW = 0.345
+    # cpSE = 0.079
+    # coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
-    #Quadrant probabiltiies for enemy
-    epNW = 0.244
-    epNE = 0.700
-    epSW = 0.020
-    epSE = 0.036
-    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+    # #Quadrant probabiltiies for enemy
+    # epNW = 0.244
+    # epNE = 0.700
+    # epSW = 0.020
+    # epSE = 0.036
+    # enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    combatNearestEnemy(m, enemy_list)
+    # combatNearestEnemy(m, enemy_list)
 
-    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
-    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
-    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+    
+    cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
+    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
+    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
 
-    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
-    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
-    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    # epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+    epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
+    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
+    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
+    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
 
-    # dimensions = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
+    dimensions = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    # res = gp_minimize(objective, dimensions = dimensions, n_calls = 10)
+    res = gp_minimize(objective, dimensions = dimensions, n_calls = 10)
 
-    # print("Best Result: ", res.fun)
+    print("Best Result: ", res.fun)
 
-    # print("Best Paramters: ", res.x)
+    print("Best Paramters: ", res.x)
