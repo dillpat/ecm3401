@@ -7,6 +7,9 @@ from Quadrant import Quadrant
 import random
 from skopt import gp_minimize
 from skopt.space import Real
+from skopt.plots import plot_convergence, plot_evaluations, plot_objective, plot_objective_2D
+import matplotlib.pyplot as plt
+
 
 MAZE_ROWS = 10
 MAZE_COLS = 10
@@ -15,6 +18,8 @@ MAZE_DIFFICULTY = 7
 MAX_COIN = MAX_ASSET
 MAX_ENEMY = MAX_ASSET
 MIN_PROB = (1 / MAX_COIN)
+ENEMY_TARGET = 8
+COIN_TARGET = 80
 
 def BFS(m,start=None, goal=None):
     if start is None:
@@ -83,7 +88,7 @@ def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
         m.maze_map[x,y]['C'] = coin
         #print(coin.cell)
         coin_position_list[x,y]=cell
-    print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
+    #print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
 
 
 def randomlyCollectAllCoins(m, coin_position_list):
@@ -116,11 +121,11 @@ def findNearestCoin(m, start_position, coin_position_list):
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_coin_cell = cell
-    print("Distance", distance)
-    print("Nearest Coin Cell", nearest_coin_cell)
+    #print("Distance", distance)
+    #print("Nearest Coin Cell", nearest_coin_cell)
     return nearest_coin_cell
 
-def collectNearestCoins(m, coin_position_list, coin_target = 80):
+def collectNearestCoins(m, coin_position_list, coin_target = COIN_TARGET):
     start_position = (m.rows,m.cols)
     currentScore = 0
     steps = 0
@@ -138,7 +143,7 @@ def collectNearestCoins(m, coin_position_list, coin_target = 80):
         start_position = nearest_coin
         if currentScore >= coin_target:
             break
-        print("steps: ", steps)
+        #print("steps: ", steps)
     return currentScore, steps
 
 def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
@@ -156,7 +161,7 @@ def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
         m.maze_map[x,y]['A'] = enemy
         #print(enemy)
         enemy_list[x,y]=cell
-    print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
+    ##print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
     #print("maze map: ", m.maze_map)
 
 
@@ -171,18 +176,18 @@ def findNearestEnemy(m, start_position, enemy_list):
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
-    print("Distance", distance)
-    print("Nearest Enemy Cell", nearest_enemy_cell)
+    ##print("Distance", distance)
+    ##print("Nearest Enemy Cell", nearest_enemy_cell)
     #if nearest_enemy_cell == (1,1) and distance == 100000:
         #import pdb; pdb.set_trace()
     return nearest_enemy_cell
 
-def combatNearestEnemy(m, enemy_list, player_health = 80):
+def combatNearestEnemy(m, enemy_list, player_health = 80, enemy_target = ENEMY_TARGET):
     current_health = player_health
     start_position = (m.rows,m.cols)
     enemy_killed = 0
     steps = 0
-    while enemy_killed < len(enemy_list):
+    while enemy_killed < len(enemy_list) and enemy_killed < enemy_target:
         nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
         bSearch,bfsPath,fwdPath = BFS(m, start_position, nearest_enemy)
         if ('A' in m.maze_map[nearest_enemy]): # Checks for an enemy in cell
@@ -197,27 +202,27 @@ def combatNearestEnemy(m, enemy_list, player_health = 80):
                     current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
                     steps += stepsRH
                     nearest_enemy = home
-                    print("End health :", current_health)
+                    ##print("End health :", current_health)
                     #print("Number of enemies killed: ", enemy_killed_track)
                     #combatNearestEnemy(m, enemy_list)
                     #if nearest_enemy == (1,1):
                         #break
-                print( "Player_health", current_health)
-                print("Number of enemies killed: ", enemy_killed)
+                ##print( "Player_health", current_health)
+                ##print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
-    print("TOTAL STEP: ", steps)
+    ##print("TOTAL STEP: ", steps)
     return current_health, steps
 
 def combat(enemy, player_health):
     #player_health = 80
     while player_health > 0:
         if random.randint(0,10) > MAZE_DIFFICULTY:
-            print("enemy defeated")
+            ##print("enemy defeated")
             enemy.defeated = True
             break
         else:
             player_health -= enemy.health
-    print("fighting health: ", player_health)
+    ##print("fighting health: ", player_health)
     return player_health
 
 """
@@ -315,7 +320,7 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
     coin_cells = {}
     while len(coin_cells) < MAX_COIN:
         for quadrant in coin_quadrant_dict.values():
-            print("Coin Quad:", quadrant)
+            ##print("Coin Quad:", quadrant)
             number = int(MAX_COIN * quadrant.probability)
             if len(coin_cells) >= MAX_COIN:
                 break
@@ -324,10 +329,10 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
                 if total_coins + number > MAX_COIN:
                     number = MAX_COIN - total_coins
                 addCoins(m, quadrant, coin_cells, number)
-            print("Coin Quadrant: ", quadrant.base)
-            print("Coin dict: ", coin_cells)
+            ##print("Coin Quadrant: ", quadrant.base)
+            ##print("Coin dict: ", coin_cells)
 
-    print("Coin list: ", list(coin_cells))        
+    ##print("Coin list: ", list(coin_cells))        
     return list(coin_cells)
 
 def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
@@ -340,7 +345,7 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     enemy_cells = {}
     while len(enemy_cells) < MAX_ENEMY:
         for quadrant in enemy_quadrant_dict.values():
-            print("Enemy Quad:", quadrant)
+            ##print("Enemy Quad:", quadrant)
             number = int(MAX_ENEMY * quadrant.probability)
             if len(enemy_cells) >= MAX_ENEMY:
                 break
@@ -349,10 +354,10 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
                 if total_enemy + number > MAX_ENEMY:
                     number = MAX_ENEMY - total_enemy
                 addEnemy(m, quadrant, enemy_cells, number)
-            print("Enemy Quadrant: ", quadrant.base)
-            print("Enemy dict: ", enemy_cells)
+            ##print("Enemy Quadrant: ", quadrant.base)
+            ##print("Enemy dict: ", enemy_cells)
     
-    print("enemy List: ", list(enemy_cells))
+    ##print("enemy List: ", list(enemy_cells))
     return list(enemy_cells)
 
 
@@ -445,6 +450,17 @@ if __name__=='__main__':
 
     res = gp_minimize(objective, dimensions = dimensions, n_calls = 10)
 
+
     print("Best Result: ", res.fun)
 
     print("Best Paramters: ", res.x)
+
+    plot_convergence(res)
+
+    #_ = plot_evaluations(res) # this one works plots samples vs probability 
+    #_ = plot_objective(res, n_samples=40)
+    #_ = plot_objective_2D(result = res,
+    #                      dimension_identifier1='epNW',
+    #                      dimension_identifier2='cpNW'
+    #                      )
+    plt.show()
