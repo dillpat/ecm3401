@@ -20,8 +20,9 @@ MAX_ENEMY = MAX_ASSET
 MIN_PROB = (1 / MAX_COIN)
 ENEMY_TARGET = 8
 COIN_TARGET = 80
+WEIGHT_GAIN = 5
 
-def BFS(m,start=None, goal=None):
+def BFS(m,start=None, goal=None, avoid_enemy = False):
     if start is None:
         start=(m.rows,m.cols)
     if goal is None:
@@ -32,6 +33,7 @@ def BFS(m,start=None, goal=None):
     explored = [start]
     bSearch=[]
     currentScore = 0
+    weight = 0
 
     while len(frontier)>0:
         currCell=frontier.popleft()
@@ -47,7 +49,8 @@ def BFS(m,start=None, goal=None):
         if currCell==goal:
             break
         for d in 'ESNW':
-            if m.maze_map[currCell][d]==True:
+            if m.maze_map[currCell][d]==True or \
+                (avoid_enemy == True and m.maze_map[currCell]['A']):
                 if d=='E':
                     childCell=(currCell[0],currCell[1]+1)
                 elif d=='W':
@@ -56,7 +59,7 @@ def BFS(m,start=None, goal=None):
                     childCell=(currCell[0]+1,currCell[1])
                 elif d=='N':
                     childCell=(currCell[0]-1,currCell[1])
-
+                
                 if childCell in explored:
                     continue
 
@@ -65,13 +68,22 @@ def BFS(m,start=None, goal=None):
                 explored.append(childCell)
                 bfsPath[childCell] = currCell
                 bSearch.append(childCell)
+        
+        
     # print(f'{bfsPath}')
     fwdPath={}
     cell=goal
     while cell!=(start):
         fwdPath[bfsPath[cell]]=cell
         cell=bfsPath[cell]
-    return bSearch,bfsPath,fwdPath
+
+    for cell in fwdPath:
+        if 'A' in m.maze_map[cell].keys() and not m.maze_map[cell]['A'].defeated:
+            weight += ((len(bfsPath)+1) + WEIGHT_GAIN)
+        else:
+            weight = (len(fwdPath)+1)
+
+    return bSearch,bfsPath,fwdPath, weight
 
 
 def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
@@ -91,24 +103,24 @@ def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
     #print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
 
 
-def randomlyCollectAllCoins(m, coin_position_list):
-    start=(m.rows,m.cols)
-    currentScore = 0
-    #print(coin_position_list)
-    for cell in coin_position_list:
-        if not m.maze_map[cell]['C'].collected:
-            m.maze_map[cell]['C'].collected = True
-            currentScore += m.maze_map[cell]['C'].collected.value
-            #print("Start and end ", start, cell)
-            bSearch,bfsPath,fwdPath,score = BFS(m, start, cell)
-            currentScore += score
-            #print("running score", score)
-            #print("forward path", fwdPath)
-            start = cell
-    bSearch,bfsPath,fwdPath,score = BFS(m, start)
-    currentScore += score
-    #print(m._goal)
-    #print(currentScore)
+# def randomlyCollectAllCoins(m, coin_position_list):
+#     start=(m.rows,m.cols)
+#     currentScore = 0
+#     #print(coin_position_list)
+#     for cell in coin_position_list:
+#         if not m.maze_map[cell]['C'].collected:
+#             m.maze_map[cell]['C'].collected = True
+#             currentScore += m.maze_map[cell]['C'].collected.value
+#             #print("Start and end ", start, cell)
+#             bSearch,bfsPath,fwdPath,weight = BFS(m, start, cell)
+#             currentScore += score
+#             #print("running score", score)
+#             #print("forward path", fwdPath)
+#             start = cell
+#     bSearch,bfsPath,fwdPath,weight = BFS(m, start)
+#     currentScore += score
+#     #print(m._goal)
+#     #print(currentScore)
 
 def findNearestCoin(m, start_position, coin_position_list):
     """
@@ -117,7 +129,7 @@ def findNearestCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,bfsPath,fwdPath = BFS(m, start_position, cell)
+            bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_coin_cell = cell
@@ -131,7 +143,7 @@ def collectNearestCoins(m, coin_position_list, coin_target = COIN_TARGET):
     steps = 0
     for i in range(len(coin_position_list)):
         nearest_coin = findNearestCoin(m, start_position, coin_position_list)
-        bSearch,bfsPath,fwdPath = BFS(m, start_position, nearest_coin)
+        bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, nearest_coin)
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
@@ -172,7 +184,7 @@ def findNearestEnemy(m, start_position, enemy_list):
     distance = 100000
     for cell in enemy_list:
         if not m.maze_map[cell]['A'].defeated: 
-            bSearch,bfsPath,fwdPath = BFS(m, start_position, cell)
+            bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
@@ -189,7 +201,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80, enemy_target = ENEMY_T
     steps = 0
     while enemy_killed < len(enemy_list) and enemy_killed < enemy_target:
         nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
-        bSearch,bfsPath,fwdPath = BFS(m, start_position, nearest_enemy)
+        bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, nearest_enemy)
         if ('A' in m.maze_map[nearest_enemy]): # Checks for an enemy in cell
             enemy = m.maze_map[nearest_enemy]['A']
             if not enemy.defeated:
@@ -197,6 +209,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80, enemy_target = ENEMY_T
                 if enemy.defeated:
                     enemy_killed += 1
                     steps += (len(fwdPath)+1)
+                    print("Enemy Path: ", fwdPath)
                 # current health will tell you if enemy is defeated
                 if current_health == 0:
                     current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
@@ -233,7 +246,7 @@ def restoreHealth(m, current_health, enemy):
     current_position = enemy.position
     steps = 0
     if current_health == 0:
-        bSearch,bfsPath,fwdPath = BFS(m, current_position, home)
+        bSearch,bfsPath,fwdPath,weight = BFS(m, current_position, home)
         steps += (len(fwdPath)+1)
         current_health = 80
         #print("Path: ", fwdPath)
@@ -360,6 +373,105 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     ##print("enemy List: ", list(enemy_cells))
     return list(enemy_cells)
 
+def player_style1(m, coin_list, enemy_list):
+    '''
+    Player style where you collect all the coins and defeat all the enemies
+    '''
+    _, steps_coins = collectNearestCoins(m, coin_list)
+    
+    _, steps_enemy = combatNearestEnemy(m, enemy_list)
+
+    total_steps = steps_coins + steps_enemy
+    return total_steps
+
+## def greedy 
+'''
+The objective of this player is to collect all the coins without fighting any enemies. This means collecting coins 1-8, without 
+fighting any enemies. So all enemies must be avoided and pathed around. If no path then choose the quickest route.
+'''
+def findOnlyCoin(m, start_position, coin_position_list):
+    """
+    """
+    nearest_coin_cell=(1,1) # Default position maze exit
+    distance = 100000
+    for cell in coin_position_list:
+        if not m.maze_map[cell]['C'].collected: 
+            bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, cell)
+            if (weight) < distance:
+                    distance = (weight)
+                    nearest_coin_cell = cell
+
+    return nearest_coin_cell
+
+def collectOnlyCoins(m, coin_position_list, coin_target = COIN_TARGET):
+    start_position = (m.rows,m.cols)
+    currentScore = 0
+    steps = 0
+    for i in range(len(coin_position_list)):
+        nearest_coin = findOnlyCoin(m, start_position, coin_position_list)
+        bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, nearest_coin)
+        if ('C' in m.maze_map[nearest_coin]):
+            coin = m.maze_map[nearest_coin]['C']
+            if not coin.collected:
+                #print("found coin", coin)
+                coin.collected = True
+                print("collected")
+                currentScore += coin.value
+                print("score: ", currentScore)
+                steps += (len(fwdPath)+1)
+        print(" coin path: ", fwdPath)
+                #print("Coin Value: ", currentScore, coin.value)
+        start_position = nearest_coin
+        if currentScore >= coin_target:
+            break
+        #print("steps: ", steps)
+    return currentScore, steps
+
+
+def greedy_player(m, coin_list, enemy_list):
+
+    _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=80)
+    
+    _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=0)
+
+    total_steps = steps_coins + steps_enemy
+    return total_steps
+
+
+
+
+## def aggressive
+''''
+This player wants to fight all the enemies, this player only cares about fighting 1-8 enemies, it does not matter if the player
+collects any coins, they just care about fighting the enemy
+'''
+def aggresive_player(m, coin_list, enemy_list):
+
+    _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=8)
+
+    _, steps_coins = collectNearestCoins(m, coin_list, coin_target=0)
+
+
+    total_steps = steps_coins + steps_enemy
+    return total_steps
+
+
+## def middle
+'''
+This player wants to partake in both objectives, fighting 1-8 enemies or collecting 1-8 coins, the player fights the enemies
+first, the enemies that are set as defeated are allowed to be passed over by the player when he is collecting the coins. 
+Otherwise he will have to path around
+'''
+
+def middle_player(m, coin_list, enemy_list):
+
+    _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=4)
+
+    _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=40)
+
+
+    total_steps = steps_coins + steps_enemy
+    return total_steps
 
 #def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
 def objective(dimensions):
@@ -375,7 +487,7 @@ def objective(dimensions):
     epSE = dimensions[7]
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=60)
+    m.CreateMaze(loopPercent=70)
 
     # Quadrant probabilities for coin
     # cpNW = 0.123
@@ -391,14 +503,15 @@ def objective(dimensions):
     # epSE = 0.036
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
-    ##steps_coins = collectNearestCoins(m, coin_list)[1]
-    # or
-    _, steps_coins = collectNearestCoins(m, coin_list)
+    # _, steps_coins = collectNearestCoins(m, coin_list)
 
-    #steps_enemy = combatNearestEnemy(m, enemy_list)[1]
-    _, steps_enemy = combatNearestEnemy(m, enemy_list)
+    # _, steps_enemy = combatNearestEnemy(m, enemy_list)
 
-    total_steps = steps_coins + steps_enemy
+    # total_steps = steps_coins + steps_enemy
+    # return total_steps
+
+    total_steps = middle_player(m, coin_list, enemy_list)
+
     return total_steps
 
 if __name__=='__main__':
@@ -448,7 +561,7 @@ if __name__=='__main__':
 
     dimensions = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    res = gp_minimize(objective, dimensions = dimensions, n_calls = 10)
+    res = gp_minimize(objective, dimensions = dimensions, n_calls = 11)
 
 
     print("Best Result: ", res.fun)
