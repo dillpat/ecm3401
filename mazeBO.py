@@ -209,7 +209,7 @@ def combatNearestEnemy(m, enemy_list, player_health = 80, enemy_target = ENEMY_T
                 if enemy.defeated:
                     enemy_killed += 1
                     steps += (len(fwdPath)+1)
-                    #print("Enemy Path: ", fwdPath)
+                    print("Enemy Path: ", fwdPath)
                 # current health will tell you if enemy is defeated
                 if current_health == 0:
                     current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
@@ -317,13 +317,10 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
 
 
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-    distribution_dict["qNW"].probability = (pNW // MIN_PROB) * MIN_PROB
-    pNE = 1.0 - pNW
-    distribution_dict["qNE"].probability = (pNE // MIN_PROB) * MIN_PROB
-    pSW = 1.0 - (pNW + pNE)
-    distribution_dict["qSW"].probability = (pSW // MIN_PROB) * MIN_PROB
-    pSE = 1.0 - (pNW + pNE + pSW)
-    distribution_dict["qSE"].probability = (pSE // MIN_PROB) * MIN_PROB
+    distribution_dict["qNW"].probability = pNW
+    distribution_dict["qNE"].probability = pNE
+    distribution_dict["qSW"].probability = pSW
+    distribution_dict["qSE"].probability = pSE
 
 def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
 
@@ -419,11 +416,11 @@ def collectOnlyCoins(m, coin_position_list, coin_target = COIN_TARGET):
             if not coin.collected:
                 #print("found coin", coin)
                 coin.collected = True
-                #print("collected")
+                print("collected")
                 currentScore += coin.value
-                #print("score: ", currentScore)
+                print("score: ", currentScore)
                 steps += (len(fwdPath)+1)
-        #print(" coin path: ", fwdPath)
+        print(" coin path: ", fwdPath)
                 #print("Coin Value: ", currentScore, coin.value)
         start_position = nearest_coin
         if currentScore >= coin_target:
@@ -432,30 +429,24 @@ def collectOnlyCoins(m, coin_position_list, coin_target = COIN_TARGET):
     return currentScore, steps
 
 
-def greedy_player(m, coin_list, enemy_list):
-    target = 29
+def greedy_player(m, coin_list, enemy_list, target = 0):
     _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=80)
-    
     _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=0)
-
     total_steps = steps_coins + steps_enemy
-    #score = total_steps - target
-    return total_steps
+    score = total_steps - target
+    return score
 
 ## def aggressive
 ''''
 This player wants to fight all the enemies, this player only cares about fighting 1-8 enemies, it does not matter if the player
 collects any coins, they just care about fighting the enemy
 '''
-def aggresive_player(m, coin_list, enemy_list):
-
+def aggresive_player(m, coin_list, enemy_list, target = 0):
     _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=8)
-
     _, steps_coins = collectNearestCoins(m, coin_list, coin_target=0)
-
-
     total_steps = steps_coins + steps_enemy
-    return total_steps
+    score = total_steps - target
+    return score
 
 ## def middle
 '''
@@ -464,18 +455,15 @@ first, the enemies that are set as defeated are allowed to be passed over by the
 Otherwise he will have to path around
 '''
 
-def middle_player(m, coin_list, enemy_list):
-
-    _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=4)
-
+def neutral_player(m, coin_list, enemy_list, target = 0):
+    _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=5)
     _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=40)
-
-
     total_steps = steps_coins + steps_enemy
-    return total_steps
+    score = total_steps - target
+    return score
 
 #def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
-def objective(dimensions2x2):
+def objective_greedy(dimensions2x2):
     #import pdb; pdb.set_trace()
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
@@ -490,19 +478,81 @@ def objective(dimensions2x2):
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=70)
 
-
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
 
     total_steps = greedy_player(m, coin_list, enemy_list)
 
-    return total_steps 
+    return total_steps
+
+def objective_neutral(dimensions2x2):
+    #import pdb; pdb.set_trace()
+    cpNW = dimensions2x2[0]
+    cpNE = dimensions2x2[1]
+    cpSW = dimensions2x2[2]
+    cpSE = dimensions2x2[3]
+
+    epNW = dimensions2x2[4]
+    epNE = dimensions2x2[5]
+    epSW = dimensions2x2[6]
+    epSE = dimensions2x2[7]
+
+    m=maze(MAZE_ROWS, MAZE_COLS)
+    m.CreateMaze(loopPercent=70)
+
+    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+
+    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+
+    total_steps = neutral_player(m, coin_list, enemy_list)
+
+    return total_steps
+    
+def objective_aggresive(dimensions2x2):
+    #import pdb; pdb.set_trace()
+    cpNW = dimensions2x2[0]
+    cpNE = dimensions2x2[1]
+    cpSW = dimensions2x2[2]
+    cpSE = dimensions2x2[3]
+
+    epNW = dimensions2x2[4]
+    epNE = dimensions2x2[5]
+    epSW = dimensions2x2[6]
+    epSE = dimensions2x2[7]
+
+    m=maze(MAZE_ROWS, MAZE_COLS)
+    m.CreateMaze(loopPercent=70)
+
+    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+
+    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+
+    total_steps = aggresive_player(m, coin_list, enemy_list)
+
+    return total_steps
+
+def play_game(player, n_iter = 5):
+    cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
+    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
+    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+
+    epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
+    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
+    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
+    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+
+    dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
+
+    return [gp_minimize(player, dimensions = dimensions2x2, n_calls = 15)
+            for n in range(n_iter)]
+        
 
 if __name__=='__main__':
 
-    m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=60)
+    #m=maze(MAZE_ROWS, MAZE_COLS)
+    #m.CreateMaze(loopPercent=70)
     #coin_position_list = addCoins(m)
     #print("Coin position list", coin_position_list)
     #print(m.maze_map)
@@ -534,28 +584,36 @@ if __name__=='__main__':
     # combatNearestEnemy(m, enemy_list)
 
     
-    cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
-    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
-    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
+    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
+    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
+    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
 
-    epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
-    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
-    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
+    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
+    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
+    # epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
 
-    dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
+    # dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    res = gp_minimize(objective, dimensions = dimensions2x2, n_calls = 10)
+    # res = gp_minimize(objective, dimensions = dimensions2x2, n_calls = 20)
 
+    # print("Best Result: ", res.fun)
 
-    #print("Best Result: ", res.fun)
+    # print("Best Paramters: ", res.x)
 
-    #print("Best Paramters: ", res.x)
-    print(res)
-
-    plot_convergence(res)
+    # plot_convergence(res)
 
     #_ = plot_evaluations(res) # this one works plots samples vs probability 
     #_ = plot_objective(res, n_samples=40)
+    #_ = plot_objective_2D(result = res,
+    #                      dimension_identifier1='epNW',
+    #                      dimension_identifier2='cpNW'
+    #                      )
+    greedy_res = play_game(objective_greedy)
+    neutral_res = play_game(objective_aggresive)
+    aggresive_res = play_game(objective_aggresive)
+    plot_convergence(("greedy res", greedy_res),
+                    ("neutral res", neutral_res),
+                    ("aggresive res", aggresive_res))
     plt.show()
