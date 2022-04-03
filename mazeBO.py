@@ -20,8 +20,9 @@ MAX_ENEMY = MAX_ASSET
 MIN_PROB = (1 / MAX_COIN)
 ENEMY_TARGET = 8
 COIN_TARGET = 80
-WEIGHT_GAIN = 5
+WEIGHT_GAIN = 10
 
+#FIXME: when do you use avoid_enemy?
 def BFS(m,start=None, goal=None, avoid_enemy = False):
     if start is None:
         start=(m.rows,m.cols)
@@ -49,8 +50,7 @@ def BFS(m,start=None, goal=None, avoid_enemy = False):
         if currCell==goal:
             break
         for d in 'ESNW':
-            if m.maze_map[currCell][d]==True or \
-                (avoid_enemy == True and m.maze_map[currCell]['A']):
+            if m.maze_map[currCell][d]==True: #or (avoid_enemy == True and m.maze_map[currCell]['A']):
                 if d=='E':
                     childCell=(currCell[0],currCell[1]+1)
                 elif d=='W':
@@ -79,7 +79,7 @@ def BFS(m,start=None, goal=None, avoid_enemy = False):
 
     for cell in fwdPath:
         if 'A' in m.maze_map[cell].keys() and not m.maze_map[cell]['A'].defeated:
-            weight += ((len(bfsPath)+1) + WEIGHT_GAIN)
+            weight += ((len(fwdPath)+1) + WEIGHT_GAIN)
         else:
             weight = (len(fwdPath)+1)
 
@@ -168,6 +168,7 @@ def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
         x=cell[0]
         y=cell[1]
         enemy = Enemy(m, x, y)
+        #FIXME: can an enemy and coin be in the same cell?
         if 'A' not in m.maze_map[x,y].keys():
             enemy_count += 1
         m.maze_map[x,y]['A'] = enemy
@@ -397,9 +398,9 @@ def findOnlyCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, cell)
-            if (weight) < distance:
-                    distance = (weight)
+            bSearch,bfsPath,fwdPath,weight = BFS(m, start_position, cell, avoid_enemy=False)
+            if weight < distance:
+                    distance = weight
                     nearest_coin_cell = cell
 
     return nearest_coin_cell
@@ -429,7 +430,7 @@ def collectOnlyCoins(m, coin_position_list, coin_target = COIN_TARGET):
     return currentScore, steps
 
 
-def greedy_player(m, coin_list, enemy_list, target = 0):
+def greedy_player(m, coin_list, enemy_list, target = 0): #35):
     _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=80)
     _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=0)
     total_steps = steps_coins + steps_enemy
@@ -441,7 +442,7 @@ def greedy_player(m, coin_list, enemy_list, target = 0):
 This player wants to fight all the enemies, this player only cares about fighting 1-8 enemies, it does not matter if the player
 collects any coins, they just care about fighting the enemy
 '''
-def aggresive_player(m, coin_list, enemy_list, target = 0):
+def aggresive_player(m, coin_list, enemy_list, target = 0): #50):
     _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=8)
     _, steps_coins = collectNearestCoins(m, coin_list, coin_target=0)
     total_steps = steps_coins + steps_enemy
@@ -455,7 +456,7 @@ first, the enemies that are set as defeated are allowed to be passed over by the
 Otherwise he will have to path around
 '''
 
-def neutral_player(m, coin_list, enemy_list, target = 0):
+def neutral_player(m, coin_list, enemy_list, target = 0): #60):
     _, steps_enemy = combatNearestEnemy(m, enemy_list,enemy_target=5)
     _, steps_coins = collectOnlyCoins(m, coin_list, coin_target=40)
     total_steps = steps_coins + steps_enemy
@@ -476,7 +477,7 @@ def objective_greedy(dimensions2x2):
     epSE = dimensions2x2[7]
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=70)
+    m.CreateMaze(loopPercent=70, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
@@ -499,7 +500,7 @@ def objective_neutral(dimensions2x2):
     epSE = dimensions2x2[7]
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=70)
+    m.CreateMaze(loopPercent=70, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
@@ -522,7 +523,7 @@ def objective_aggresive(dimensions2x2):
     epSE = dimensions2x2[7]
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=70)
+    m.CreateMaze(loopPercent=70, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
 
@@ -533,26 +534,26 @@ def objective_aggresive(dimensions2x2):
     return total_steps
 
 def play_game(player, n_iter = 5):
-    cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
-    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
-    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+    cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
+    cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
+    cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.250)
 
-    epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
-    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
-    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+    epNW = Real(name = 'epNW', low= 0.001, high = 0.250)
+    epNE = Real(name = 'epNE', low= 0.125, high = 0.375)
+    epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
+    epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
 
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    return [gp_minimize(player, dimensions = dimensions2x2, n_calls = 15)
+    return [gp_minimize(player, dimensions = dimensions2x2, n_calls = 10)
             for n in range(n_iter)]
-        
+
 
 if __name__=='__main__':
 
     #m=maze(MAZE_ROWS, MAZE_COLS)
-    #m.CreateMaze(loopPercent=70)
+    #m.CreateMaze(loopPercent=70, displayMaze=False)
     #coin_position_list = addCoins(m)
     #print("Coin position list", coin_position_list)
     #print(m.maze_map)
@@ -610,9 +611,9 @@ if __name__=='__main__':
     #                      dimension_identifier1='epNW',
     #                      dimension_identifier2='cpNW'
     #                      )
-    greedy_res = play_game(objective_greedy)
-    neutral_res = play_game(objective_aggresive)
-    aggresive_res = play_game(objective_aggresive)
+    greedy_res = play_game(objective_greedy, n_iter=10)
+    neutral_res = play_game(objective_aggresive, n_iter=10)
+    aggresive_res = play_game(objective_aggresive, n_iter=10)
     plot_convergence(("greedy res", greedy_res),
                     ("neutral res", neutral_res),
                     ("aggresive res", aggresive_res))

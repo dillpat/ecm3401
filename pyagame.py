@@ -330,7 +330,7 @@ class maze:
         if x+1<=self.rows:
             self.maze_map[x+1,y]['N']=1
     
-    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark):
+    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark,displayMaze=True):
         '''
         One very important function to create a Random Maze
         pattern-->  It can be 'v' for vertical or 'h' for horizontal
@@ -343,6 +343,7 @@ class maze:
         loadMaze--> Provide the CSV file to generate a desried maze
         theme--> Dark or Light
         '''
+        self._displayMaze=displayMaze
         _stack=[]
         _closed=[]
         self.theme=theme
@@ -586,8 +587,9 @@ class maze:
                     c[1]=int(c[1].rstrip(')'))
                     self.maze_map[tuple(c)]={'E':int(i[1]),'W':int(i[2]),'N':int(i[3]),'S':int(i[4])}
             self.path=BFS((self.rows,self.cols))
-        self._drawMaze(self.theme)
-        agent(self,*self._goal,shape='square',filled=True,color=COLOR.green)
+        if displayMaze:
+            self._drawMaze(self.theme)
+            agent(self,*self._goal,shape='square',filled=True,color=COLOR.green)
         if saveMaze:
             dt_string = datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
             with open(f'maze--{dt_string}.csv','w',newline='') as f:
@@ -606,8 +608,8 @@ class maze:
         '''
         Creation of Tkinter window and maze lines
         '''
-        
-        self._LabWidth=26 # Space from the top for Labels
+        if self._displayMaze:
+            self._LabWidth=26 # Space from the top for Labels
         self._win=Tk()
         self._win.state('zoomed')
         self._win.title('MAZE Level')
