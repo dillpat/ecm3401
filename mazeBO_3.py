@@ -346,28 +346,28 @@ def divideQuadrants(m):
     half_height = height_max // 2
 
     # Creating the NW quadrant
-    cNW.append((1,1)) # (1,1)
-    cNW.append((half_width, half_height))
-    cNW.append((1, half_height))
-    cNW.append((half_width, 1))
+    cNW.append((1,1)) # (1,1) for 10x10
+    cNW.append((1, half_width))
+    cNW.append((half_height, 1))
+    cNW.append((half_height, half_width))
 
     # Creating the NE quadrant
-    cNE.append((half_width + 1, 1)) # (6,1)
-    cNE.append((width_max, 1))
-    cNE.append((width_max, half_height))
-    cNE.append((half_width + 1, half_height))
+    cNE.append((1, half_width + 1)) # (1,6) for 10x10
+    cNE.append((1, width_max))
+    cNE.append((half_height, half_width + 1))
+    cNE.append((half_height, width_max))
 
     # Creating the SW quadrant
-    cSW.append((1, half_height + 1)) # (1,6)
-    cSW.append((half_width, half_height + 1))
-    cSW.append((1, height_max))
-    cSW.append((half_width, height_max))
+    cSW.append((half_height + 1, 1)) # (6, 1) for 10x10
+    cSW.append((half_height + 1, half_width))
+    cSW.append((height_max, 1))
+    cSW.append((height_max, half_width))
 
     # Creating the SE quadrant
-    cSE.append((half_width + 1, half_height + 1)) # (6,6)
-    cSE.append((width_max, half_height + 1))
-    cSE.append((width_max, height_max))
-    cSE.append((half_width + 1, height_max))
+    cSE.append((half_height + 1, half_width + 1)) # (6,6) for 10x10
+    cSE.append((half_height + 1, width_max))
+    cSE.append((height_max, half_width + 1))
+    cSE.append((height_max, width_max))
 
     #print("NW", cNW)
     #print("NE", cNE)
@@ -387,7 +387,6 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
     def prob(p1, p2, p3):
         return abs(1-(p1 + p2 + p3)) + 0.125
-    #import pdb; pdb.set_trace()
     distribution_dict["qNW"].probability = prob(pNE, pSW, pSE) #pNW
     distribution_dict["qNE"].probability = prob(pNW, pSW, pSE) #pNE
     distribution_dict["qSW"].probability = prob(pNW, pNE, pSE) #pSW
@@ -554,7 +553,6 @@ def neutral_player(m, coin_list, enemy_list, target = 0): #60):
     score = total_steps - target
     return score
 
-
 #def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
 def objective_greedy(dimensions2x2):
     #import pdb; pdb.set_trace()
@@ -666,43 +664,69 @@ def play_game(player, n_iter = 5):
     # epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
     # epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
 
-    cpNW = Real(name = 'cpNW', low= 0.125, high = 0.999)
-    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
-    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+    cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
+    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
+    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
 
-    epNW = Real(name = 'epNW', low= 0.125, high = 0.999)
-    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
-    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+    epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
+    epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
+    epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
+    epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
 
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    return [gp_minimize(player, dimensions = dimensions2x2, n_calls = 50)
+    np.random.seed(12345)
+    return [gp_minimize(player, dimensions = dimensions2x2, noise=0.9, acq_func="PI", n_initial_points = 10, n_calls = 200)
             for n in range(n_iter)]
         
 def plot_coin_probability(play_log=None):
     if not play_log:
         return
 
+    scatter = 0
     x_val = [x+1 for x in range(len(play_log.gp_params))]
     for y in range(0,4):
         y_val = [play_log.gp_params[x][y] for x in range(len(play_log.gp_params))]
-        plt.scatter(x_val, y_val)
+        scatter = plt.scatter(x_val, y_val)
+
+    # produce a legend with the unique colors from the scatter
+    plt.legend(scatter.legend_elements(num=4)[0], labels=['cpnw', 'cpne', 'cpsw', 'cpse'],
+                    loc="lower left", title="Quadrant Prob")
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
     plt.ylabel('Coin Quadrant Probability')   
     plt.show()
 
+# plt.figure(figsize=(8,6))
+# sp_names = ['Adelie', 'Gentoo', 'Chinstrap']
+# scatter = plt.scatter(df.culmen_length_mm, 
+#             df.culmen_depth_mm,
+#             s=150,
+#             c=df.species.astype('category').cat.codes)
+# plt.xlabel("Culmen Length", size=24)
+# plt.ylabel("Culmen Depth", size=24)
+# # add legend to the plot with names
+# plt.legend(handles=scatter.legend_elements()[0], 
+#            labels=sp_names,
+#            title="species")
+# plt.savefig("scatterplot_colored_by_variable_with_legend_matplotlib_Python.png",
+#                     format='png',dpi=
+
 def plot_enemy_probability(play_log=None):
     if not play_log:
         return
 
+    scatter = 0
     x_val = [x+1 for x in range(len(play_log.gp_params))]
     for y in range(4,8):
         y_val = [play_log.gp_params[x][y] for x in range(len(play_log.gp_params))]
-        plt.scatter(x_val, y_val)
+        scatter = plt.scatter(x_val, y_val)
+
+    # produce a legend with the unique colors from the scatter
+    plt.legend(scatter.legend_elements(num=4)[0], labels=['epnw', 'epne', 'epsw', 'epse'],
+                    loc="lower left", title="Quadrant Prob")
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
@@ -713,8 +737,8 @@ def plot_coin_cells(play_log=None):
     if not play_log:
         return
 
-    x_val = [x[0] for cells in play_log.coin_cells for x in cells]
-    y_val = [x[1] for cells in play_log.coin_cells for x in cells]
+    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
+    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
     plt.scatter(x_val, y_val)
 
     plt.title(play_log.title())
@@ -726,8 +750,8 @@ def plot_enemy_cells(play_log=None):
     if not play_log:
         return
 
-    x_val = [x[0] for cells in play_log.enemy_cells for x in cells]
-    y_val = [x[1] for cells in play_log.enemy_cells for x in cells]
+    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
+    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
     plt.scatter(x_val, y_val)
 
     plt.title(play_log.title())
@@ -796,9 +820,9 @@ if __name__=='__main__':
     #                      dimension_identifier1='epNW',
     #                      dimension_identifier2='cpNW'
     #                      )
-    greedy_res = play_game(objective_greedy, n_iter=10)
-    neutral_res = play_game(objective_neutral, n_iter=10)
-    aggresive_res = play_game(objective_aggresive, n_iter=10)
+    greedy_res = play_game(objective_greedy, n_iter=1)
+    neutral_res = play_game(objective_neutral, n_iter=1)
+    aggresive_res = play_game(objective_aggresive, n_iter=1)
     plot_convergence(("greedy res", greedy_res),
                     ("neutral res", neutral_res),
                     ("aggresive res", aggresive_res))
@@ -823,3 +847,6 @@ if __name__=='__main__':
 
     plot_coin_cells(aggresive_log)
     plot_enemy_cells(aggresive_log)
+
+    import pdb; pdb.set_trace()
+    
