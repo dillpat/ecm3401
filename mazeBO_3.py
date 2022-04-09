@@ -5,7 +5,7 @@ from Coin import Coin
 from Enemy import Enemy
 from Quadrant import Quadrant
 import random
-from skopt import gp_minimize
+from skopt import gp_minimize, forest_minimize
 from skopt.space import Real
 from skopt.plots import plot_convergence, plot_evaluations, plot_objective, plot_objective_2D
 import matplotlib.pyplot as plt
@@ -568,7 +568,7 @@ def objective_greedy(dimensions2x2):
     greedy_log.gp_params = dimensions2x2
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, displayMaze=False)
+    m.CreateMaze(loopPercent=40, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     greedy_log.coin_cells = coin_list
@@ -601,7 +601,7 @@ def objective_neutral(dimensions2x2):
     neutral_log.gp_params = dimensions2x2
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, displayMaze=False)
+    m.CreateMaze(loopPercent=40, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     neutral_log.coin_cells = coin_list
@@ -634,7 +634,7 @@ def objective_aggresive(dimensions2x2):
     aggresive_log.gp_params = dimensions2x2
     
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, displayMaze=False)
+    m.CreateMaze(loopPercent=40, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     aggresive_log.coin_cells = coin_list
@@ -677,7 +677,7 @@ def play_game(player, n_iter = 5):
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
     np.random.seed(12345)
-    return [gp_minimize(player, dimensions = dimensions2x2, noise=0.9, acq_func="PI", n_initial_points = 10, n_calls = 200)
+    return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 150)
             for n in range(n_iter)]
         
 def plot_coin_probability(play_log=None):
