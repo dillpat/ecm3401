@@ -9,6 +9,7 @@ from skopt import gp_minimize, forest_minimize
 from skopt.space import Real
 from skopt.plots import plot_convergence, plot_evaluations, plot_objective, plot_objective_2D
 import matplotlib.pyplot as plt
+from queue import PriorityQueue
 
 
 MAZE_ROWS = 20
@@ -85,66 +86,64 @@ neutral_log = PlayLog('Neutral Player')
 aggresive_log = PlayLog('Aggresive Player')
 run_log = PlayLog('All Players')
 
+def h(cell1, cell2):
+    x1, y1 = cell1
+    x2, y2 = cell2
+    return (abs(x1 - x2) + abs(y1 - y2))
+
 def BFS(m, start=None, goal=None, avoid_enemy = False):
+    weight = 0
     if start is None:
         start=(m.rows,m.cols)
     if goal is None:
         goal = m._goal
-    frontier = deque()
-    frontier.append(start)
-    bfsPath = {}
-    explored = [start]
-    bSearch=[]
-    currentScore = 0
-    weight = 0
-
-    while len(frontier)>0:
-        currCell=frontier.popleft()
-        # if ('C' in m.maze_map[currCell]):
-        #     coin = m.maze_map[currCell]['C']
-        #     if not coin.collected:
-        #         #print("found coin", coin)
-        #         coin.collected = True
-        #         currentScore += coin.value
-        #         #print("Coin Value: ", currentScore, coin.value)
-        
-
-        if currCell==goal:
-            break
+    open = PriorityQueue()
+    open.put((h(start, m._goal), h(start, m._goal), start))
+    aPath = {}
+    g_score = {row: float("inf") for row in m.grid}
+    g_score[start] = 0
+    f_score = {row: float("inf") for row in m.grid}
+    f_score[start] = h(start, m._goal)
+    searchPath=[start]
+    while not open.empty():
+        currCell = open.get()[2]
+        searchPath.append(currCell)
+        if currCell == m._goal:
+            break        
         for d in 'ESNW':
             if m.maze_map[currCell][d]==True:
                 if d=='E':
-                    nextCell=(currCell[0],currCell[1]+1)
+                    childCell=(currCell[0],currCell[1]+1)
                 elif d=='W':
-                    nextCell=(currCell[0],currCell[1]-1)
-                elif d=='S':
-                    nextCell=(currCell[0]+1,currCell[1])
+                    childCell=(currCell[0],currCell[1]-1)
                 elif d=='N':
-                    nextCell=(currCell[0]-1,currCell[1])
-                
-                if nextCell in explored:
-                    continue
+                    childCell=(currCell[0]-1,currCell[1])
+                elif d=='S':
+                    childCell=(currCell[0]+1,currCell[1])
 
-                frontier.append(nextCell)
-                explored.append(nextCell)
-                bfsPath[nextCell] = currCell
-                bSearch.append(nextCell)
-        
-    #print("BFS PATH----")
-    #print(f'{bfsPath}')
+                temp_g_score = g_score[currCell] + 1
+                temp_f_score = temp_g_score + h(childCell, m._goal)
+
+                if temp_f_score < f_score[childCell]:   
+                    aPath[childCell] = currCell
+                    g_score[childCell] = temp_g_score
+                    f_score[childCell] = temp_g_score + h(childCell, m._goal)
+                    open.put((f_score[childCell], h(childCell, m._goal), childCell))
+
+
     fwdPath={}
-    cell=goal
-    while cell!=(start):
-        fwdPath[bfsPath[cell]]=cell
-        cell=bfsPath[cell]
+    cell=m._goal
+    while cell!=start:
+        fwdPath[aPath[cell]]=cell
+        cell=aPath[cell]
 
     for cell in fwdPath:
         if 'A' in m.maze_map[cell].keys() and not m.maze_map[cell]['A'].defeated:
             weight += ((len(fwdPath)+1) + WEIGHT_GAIN)
         else:
             weight = (len(fwdPath)+1)
-
-    return bSearch, bfsPath, fwdPath, weight
+    
+    return searchPath,aPath,fwdPath,weight
 
 
 def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
@@ -652,7 +651,7 @@ def objective_aggresive(dimensions2x2):
 
     return total_steps
 
-def play_game(player, n_iter = 5):
+def play_game(player, n_iter = 1):
     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
     # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
@@ -676,7 +675,7 @@ def play_game(player, n_iter = 5):
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
     np.random.seed(12345)
-    return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 150)
+    return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 1000)
             for n in range(n_iter)]
         
 def plot_coin_probability(play_log=None):
@@ -819,9 +818,9 @@ if __name__=='__main__':
     #                      dimension_identifier1='epNW',
     #                      dimension_identifier2='cpNW'
     #                      )
-    greedy_res = play_game(objective_greedy, n_iter=1)
-    neutral_res = play_game(objective_neutral, n_iter=1)
-    aggresive_res = play_game(objective_aggresive, n_iter=1)
+    greedy_res = play_game(objective_greedy)
+    neutral_res = play_game(objective_neutral)
+    aggresive_res = play_game(objective_aggresive)
     plot_convergence(("greedy res", greedy_res),
                     ("neutral res", neutral_res),
                     ("aggresive res", aggresive_res))
