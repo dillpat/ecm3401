@@ -652,7 +652,7 @@ def objective_aggresive(dimensions2x2):
 
     return total_steps
 
-def play_game(player, n_iter = 5):
+def play_game(player, n_iter = 1):
     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
     # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
@@ -676,7 +676,7 @@ def play_game(player, n_iter = 5):
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
     np.random.seed(12345)
-    return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 150)
+    return [gp_minimize(player, dimensions = dimensions2x2, acq_func="PI" , n_initial_points = 10, n_calls = 10)
             for n in range(n_iter)]
         
 def plot_coin_probability(play_log=None):
@@ -701,7 +701,8 @@ def plot_coin_probability(play_log=None):
 # plt.figure(figsize=(8,6))
 # sp_names = ['Adelie', 'Gentoo', 'Chinstrap']
 # scatter = plt.scatter(df.culmen_length_mm, 
-#             df.culmen_depth_mm,
+#             df.culmen_depth_mm,c
+
 #             s=150,
 #             c=df.species.astype('category').cat.codes)
 # plt.xlabel("Culmen Length", size=24)
@@ -819,9 +820,9 @@ if __name__=='__main__':
     #                      dimension_identifier1='epNW',
     #                      dimension_identifier2='cpNW'
     #                      )
-    greedy_res = play_game(objective_greedy, n_iter=1)
-    neutral_res = play_game(objective_neutral, n_iter=1)
-    aggresive_res = play_game(objective_aggresive, n_iter=1)
+    greedy_res = play_game(objective_greedy)
+    neutral_res = play_game(objective_neutral)
+    aggresive_res = play_game(objective_aggresive)
     plot_convergence(("greedy res", greedy_res),
                     ("neutral res", neutral_res),
                     ("aggresive res", aggresive_res))

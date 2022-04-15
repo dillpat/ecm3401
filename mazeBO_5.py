@@ -9,7 +9,6 @@ from skopt import gp_minimize, forest_minimize
 from skopt.space import Real
 from skopt.plots import plot_convergence, plot_evaluations, plot_objective, plot_objective_2D
 import matplotlib.pyplot as plt
-from queue import PriorityQueue
 
 
 MAZE_ROWS = 20
@@ -83,67 +82,121 @@ class PlayLog:
 
 greedy_log = PlayLog('Greedy Player')
 neutral_log = PlayLog('Neutral Player')
-aggresive_log = PlayLog('Aggresive Player')
+aggressive_log = PlayLog('aggressive Player')
 run_log = PlayLog('All Players')
 
+#FIXME: when do you use avoid_enemy?
+def BFS(m, start=None, goal=None, avoid_enemy = False):
+    if start is None:
+        start=(m.rows,m.cols)
+    if goal is None:
+        goal = m._goal
+    frontier = deque()
+    frontier.append(start)
+    bfsPath = {}
+    explored = [start]
+    bSearch=[]
+
+    while len(frontier)>0:
+        currCell=frontier.popleft()
+        if currCell==goal:
+            break
+        for d in 'ESNW':
+            if m.maze_map[currCell][d]==True:
+                if d=='E':
+                    nextCell=(currCell[0],currCell[1]+1)
+                elif d=='W':
+                    nextCell=(currCell[0],currCell[1]-1)
+                elif d=='S':
+                    nextCell=(currCell[0]+1,currCell[1])
+                elif d=='N':
+                    nextCell=(currCell[0]-1,currCell[1])
+                
+                if nextCell in explored:
+                    continue
+
+                frontier.append(nextCell)
+                explored.append(nextCell)
+                bfsPath[nextCell] = currCell
+                bSearch.append(nextCell)
+        
+    #print("BFS PATH----")
+    #print(f'{bfsPath}')
+    fwdPath={}
+    cell=goal
+    while cell!=(start):
+        fwdPath[bfsPath[cell]]=cell
+        cell=bfsPath[cell]
+        
+    weight = 0
+    for cell in fwdPath:
+        if 'A' in m.maze_map[cell].keys() and not m.maze_map[cell]['A'].defeated:
+            weight += ((len(fwdPath)+1) + WEIGHT_GAIN)
+        else:
+            weight = (len(fwdPath)+1)
+
+    return bSearch, bfsPath, fwdPath, weight
+
+
+from queue import PriorityQueue
 def h(cell1, cell2):
     x1, y1 = cell1
     x2, y2 = cell2
     return (abs(x1 - x2) + abs(y1 - y2))
 
 def aStar(m, start=None, goal=None, avoid_enemy = False):
-    weight = 0
     if start is None:
         start=(m.rows,m.cols)
     if goal is None:
         goal = m._goal
     open = PriorityQueue()
-    open.put((h(start, m._goal), h(start, m._goal), start))
+    open.put((h(start, goal), h(start, goal), start))
     aPath = {}
     g_score = {row: float("inf") for row in m.grid}
     g_score[start] = 0
     f_score = {row: float("inf") for row in m.grid}
-    f_score[start] = h(start, m._goal)
+    f_score[start] = h(start, goal)
     searchPath=[start]
+
     while not open.empty():
         currCell = open.get()[2]
         searchPath.append(currCell)
-        if currCell == m._goal:
+        if currCell == goal:
             break        
         for d in 'ESNW':
             if m.maze_map[currCell][d]==True:
                 if d=='E':
-                    childCell=(currCell[0],currCell[1]+1)
+                    nextCell=(currCell[0],currCell[1]+1)
                 elif d=='W':
-                    childCell=(currCell[0],currCell[1]-1)
+                    nextCell=(currCell[0],currCell[1]-1)
                 elif d=='N':
-                    childCell=(currCell[0]-1,currCell[1])
+                    nextCell=(currCell[0]-1,currCell[1])
                 elif d=='S':
-                    childCell=(currCell[0]+1,currCell[1])
+                    nextCell=(currCell[0]+1,currCell[1])
 
                 temp_g_score = g_score[currCell] + 1
-                temp_f_score = temp_g_score + h(childCell, m._goal)
+                temp_f_score = temp_g_score + h(nextCell, goal)
 
-                if temp_f_score < f_score[childCell]:   
-                    aPath[childCell] = currCell
-                    g_score[childCell] = temp_g_score
-                    f_score[childCell] = temp_g_score + h(childCell, m._goal)
-                    open.put((f_score[childCell], h(childCell, m._goal), childCell))
-
+                if temp_f_score < f_score[nextCell]:   
+                    aPath[nextCell] = currCell
+                    g_score[nextCell] = temp_g_score
+                    f_score[nextCell] = temp_g_score + h(nextCell, goal)
+                    open.put((f_score[nextCell], h(nextCell, goal), nextCell))
 
     fwdPath={}
-    cell=m._goal
+    cell=goal
     while cell!=start:
         fwdPath[aPath[cell]]=cell
         cell=aPath[cell]
 
+    weight = 0
     for cell in fwdPath:
         if 'A' in m.maze_map[cell].keys() and not m.maze_map[cell]['A'].defeated:
             weight += ((len(fwdPath)+1) + WEIGHT_GAIN)
         else:
             weight = (len(fwdPath)+1)
-    
-    return searchPath,aPath,fwdPath,weight
+
+    return searchPath, aPath, fwdPath, weight
 
 
 def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
@@ -163,25 +216,6 @@ def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
     #print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
 
 
-# def randomlyCollectAllCoins(m, coin_position_list):
-#     start=(m.rows,m.cols)
-#     currentScore = 0
-#     #print(coin_position_list)
-#     for cell in coin_position_list:
-#         if not m.maze_map[cell]['C'].collected:
-#             m.maze_map[cell]['C'].collected = True
-#             currentScore += m.maze_map[cell]['C'].collected.value
-#             #print("Start and end ", start, cell)
-#             bSearch,aStarPath,fwdPath,weight = aStar(m, start, cell)
-#             currentScore += score
-#             #print("running score", score)
-#             #print("forward path", fwdPath)
-#             start = cell
-#     bSearch,aStarPath,fwdPath,weight = aStar(m, start)
-#     currentScore += score
-#     #print(m._goal)
-#     #print(currentScore)
-
 def findNearestCoin(m, start_position, coin_position_list):
     """
     """
@@ -189,7 +223,7 @@ def findNearestCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, cell)
+            bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_coin_cell = cell
@@ -206,7 +240,7 @@ def collectNearestCoins(m, coin_position_list, start_cell = None, coin_target = 
     steps = 0
     for i in range(len(coin_position_list)):
         nearest_coin = findNearestCoin(m, start_position, coin_position_list)
-        bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, nearest_coin)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, nearest_coin)
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
@@ -248,7 +282,7 @@ def findNearestEnemy(m, start_position, enemy_list):
     distance = 100000
     for cell in enemy_list:
         if not m.maze_map[cell]['A'].defeated: 
-            bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, cell)
+            bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, cell)
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
@@ -268,7 +302,7 @@ def combatNearestEnemy(m, enemy_list, start_cell = None, player_health = 80, ene
     steps = 0
     while enemy_killed < len(enemy_list) and enemy_killed < enemy_target:
         nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
-        bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, nearest_enemy)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, nearest_enemy)
         if ('A' in m.maze_map[nearest_enemy]): # Checks for an enemy in cell
             enemy = m.maze_map[nearest_enemy]['A']
             if not enemy.defeated:
@@ -313,7 +347,7 @@ def restoreHealth(m, current_health, enemy):
     current_position = enemy.position
     steps = 0
     if current_health == 0:
-        bSearch,aStarPath,fwdPath,weight = aStar(m, current_position, home)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, current_position, home)
         steps += (len(fwdPath)+1)
         current_health = 80
         #print("Path: ", fwdPath)
@@ -384,7 +418,7 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
 
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
     def prob(p1, p2, p3):
-        return abs(1-(p1 + p2 + p3)) + 0.125
+        return abs(1-(p1 + p2 + p3)) #+ 0.125
     distribution_dict["qNW"].probability = prob(pNE, pSW, pSE) #pNW
     distribution_dict["qNE"].probability = prob(pNW, pSW, pSE) #pNE
     distribution_dict["qSW"].probability = prob(pNW, pNE, pSE) #pSW
@@ -471,7 +505,7 @@ def findOnlyCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, cell, avoid_enemy=False)
+            bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, cell, avoid_enemy=False)
             if (weight) < distance:
                     distance = (weight)
                     nearest_coin_cell = cell
@@ -487,7 +521,7 @@ def collectOnlyCoins(m, coin_position_list, start_cell = None, coin_target = COI
     steps = 0
     for i in range(len(coin_position_list)):
         nearest_coin = findOnlyCoin(m, start_position, coin_position_list)
-        bSearch,aStarPath,fwdPath,weight = aStar(m, start_position, nearest_coin)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, nearest_coin)
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
@@ -511,7 +545,7 @@ def greedy_player(m, coin_list, enemy_list, target = 0): #35):
     new_position, steps_coins = collectOnlyCoins(m, coin_list, start_cell=MAZE_START, coin_target=80)
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=new_position, enemy_target=0)
     if new_position != MAZE_EXIT:
-        bSearch,aStarPath,fwdPath,weight = aStar(m, new_position, MAZE_EXIT)
+        bSearch,aPathPath,fwdPath,weight = m.findPath(m, new_position, MAZE_EXIT)
         total_steps = (len(fwdPath)+1)
     total_steps += steps_coins + steps_enemy
     score = total_steps - target
@@ -522,12 +556,12 @@ def greedy_player(m, coin_list, enemy_list, target = 0): #35):
 This player wants to fight all the enemies, this player only cares about fighting 1-8 enemies, it does not matter if the player
 collects any coins, they just care about fighting the enemy
 '''
-def aggresive_player(m, coin_list, enemy_list, target = 0): #50):
+def aggressive_player(m, coin_list, enemy_list, target = 0): #50):
     total_steps = 0
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=MAZE_START, enemy_target=8)
     new_position, steps_coins = collectNearestCoins(m, coin_list, start_cell=new_position, coin_target=0)
     if new_position != MAZE_EXIT:
-        bSearch,aStarPath,fwdPath,weight = aStar(m, new_position, MAZE_EXIT)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, new_position, MAZE_EXIT)
         total_steps = (len(fwdPath)+1)
     total_steps = steps_coins + steps_enemy
     score = total_steps - target
@@ -545,7 +579,7 @@ def neutral_player(m, coin_list, enemy_list, target = 0): #60):
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=MAZE_START, enemy_target=5)
     new_position, steps_coins = collectOnlyCoins(m, coin_list, start_cell=new_position, coin_target=40)
     if new_position != MAZE_EXIT:
-        bSearch,aStarPath,fwdPath,weight = aStar(m, new_position, MAZE_EXIT)
+        bSearch,aPath,fwdPath,weight = m.findPath(m, new_position, MAZE_EXIT)
         total_steps = (len(fwdPath)+1)
     total_steps = steps_coins + steps_enemy
     score = total_steps - target
@@ -566,7 +600,7 @@ def objective_greedy(dimensions2x2):
     greedy_log.gp_params = dimensions2x2
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=40, displayMaze=False)
+    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     greedy_log.coin_cells = coin_list
@@ -599,7 +633,7 @@ def objective_neutral(dimensions2x2):
     neutral_log.gp_params = dimensions2x2
 
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=40, displayMaze=False)
+    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     neutral_log.coin_cells = coin_list
@@ -618,7 +652,7 @@ def objective_neutral(dimensions2x2):
 
     return total_steps
     
-def objective_aggresive(dimensions2x2):
+def objective_aggressive(dimensions2x2):
     #import pdb; pdb.set_trace()
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
@@ -629,19 +663,19 @@ def objective_aggresive(dimensions2x2):
     epNE = dimensions2x2[5]
     epSW = dimensions2x2[6]
     epSE = dimensions2x2[7]
-    aggresive_log.gp_params = dimensions2x2
+    aggressive_log.gp_params = dimensions2x2
     
     m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=40, displayMaze=False)
+    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
     coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
-    aggresive_log.coin_cells = coin_list
+    aggressive_log.coin_cells = coin_list
 
     enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
-    aggresive_log.enemy_cells = enemy_list
+    aggressive_log.enemy_cells = enemy_list
 
-    total_steps = aggresive_player(m, coin_list, enemy_list)
-    aggresive_log.score = total_steps
+    total_steps = aggressive_player(m, coin_list, enemy_list)
+    aggressive_log.score = total_steps
     
     if 1.0 - (cpNW + cpNE + cpSW + cpSE) < 1:
         total_steps += 300
@@ -651,6 +685,33 @@ def objective_aggresive(dimensions2x2):
 
     return total_steps
 
+# def play_game(player, n_iter = 5):
+#     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
+#     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
+#     # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
+#     # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.250)
+
+#     # epNW = Real(name = 'epNW', low= 0.001, high = 0.250)
+#     # epNE = Real(name = 'epNE', low= 0.125, high = 0.375)
+#     # epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
+#     # epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
+
+#     cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
+#     cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
+#     cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
+#     cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
+
+#     epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
+#     epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
+#     epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
+#     epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
+
+#     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
+
+#     np.random.seed(12345)
+#     return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 50)
+#             for n in range(n_iter)]
+        
 def play_game(player, n_iter = 1):
     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
@@ -662,22 +723,47 @@ def play_game(player, n_iter = 1):
     # epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
     # epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
 
-    cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
-    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
-    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
+    # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
+    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
+    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
+    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
 
-    epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
-    epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
-    epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
+    # epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
+    # epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
+    # epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
+    # epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
+
+ 
+    cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
+    cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
+    cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+
+    epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
+    epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
+    epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
+    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
 
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
-    np.random.seed(12345)
-    return [gp_minimize(player, dimensions = dimensions2x2, acq_func="PI" ,  n_initial_points = 10, n_calls = 300)
-            for n in range(n_iter)]
-        
+    # Fixing random state for reproducibility
+    #np.random.seed(78912345)
+    results = []
+    for n in range(n_iter):
+        # Fixing random state for reproducibility
+        #np.random.seed(78912345)
+        res = gp_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 300)
+        print("res.fun", res.fun)
+        for i in range(len(res.x)):
+            if i > len(dimensions2x2):
+                break
+            dimensions2x2[i].high = res.x[i]
+        results.append(res)
+
+    return results
+
+
+
 def plot_coin_probability(play_log=None):
     if not play_log:
         return
@@ -695,6 +781,33 @@ def plot_coin_probability(play_log=None):
     plt.title(play_log.title())
     plt.xlabel('GP Run')
     plt.ylabel('Coin Quadrant Probability')   
+    plt.show()
+
+def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=None):
+    if not play_res:
+        return
+
+    if asset == 'Coin':
+        tab = ['cpnw', 'cpne', 'cpsw', 'cpse']
+    elif asset == 'Enemy':
+        tab = ['epnw', 'epne', 'epsw', 'epse']
+    else:
+        tab = []
+
+    scatter = 0
+    x_val = [x+1 for x in range(len(play_res))]
+    for y in bound:
+        y_val = [play_res[i].x[y] for i in range(len(play_res))]
+        scatter = plt.plot(x_val, y_val)
+        scatter = plt.scatter(x_val, y_val)
+
+    # produce a legend with the unique colors from the scatter
+    plt.legend(scatter.legend_elements(num=4)[0], labels=tab,
+                    loc="lower left", title="Quadrant Prob")
+
+    plt.title(title + " " + asset)
+    plt.xlabel('GP Run')
+    plt.ylabel('Probability')   
     plt.show()
 
 # plt.figure(figsize=(8,6))
@@ -731,30 +844,128 @@ def plot_enemy_probability(play_log=None):
     plt.ylabel('Enemy Quadrant Probability')   
     plt.show()
 
-def plot_coin_cells(play_log=None):
+def plot_3d_cells(play_log=None):
     if not play_log:
         return
 
+    # Import Library
+    from mpl_toolkits import mplot3d
+
+    # Projection
+    ax = plt.axes(projection="3d")
+
     x_val = [x[1] for cells in play_log.coin_cells for x in cells]
     y_val = [x[0] for cells in play_log.coin_cells for x in cells]
-    plt.scatter(x_val, y_val)
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
+    ax.scatter(x_val, y_val, z_val, marker='o')
+
+    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
+    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
+    ax.scatter(x_val, y_val, z_val, marker='^')
+    #plt.scatter(x_val, y_val)
 
     plt.title(play_log.title())
-    plt.xlabel('Coin Cell X')
-    plt.ylabel('Coin Cell Y')   
+    #plt.xlabel('Enemy Cell X')
+    #plt.ylabel('Enemy Cell Y')   
+
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+    plt.show()
+
+def plot_3dshade_cells(play_log=None):
+    if not play_log:
+        return
+
+    from matplotlib import cm
+    from matplotlib.colors import LightSource
+
+    # Import Library
+    from mpl_toolkits import mplot3d
+
+    # Projection
+    ax = plt.axes(projection="3d")
+    ls = LightSource(270, 45)
+
+    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
+    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
+    #ax.scatter(x_val, y_val, z_val, marker='o')
+    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1, facecolors=rgb,
+                       linewidth=0, antialiased=False, shade=False)
+
+    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
+    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
+    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1, facecolors=rgb,
+                       linewidth=0, antialiased=False, shade=False)
+    #ax.scatter(x_val, y_val, z_val, marker='^')
+    #plt.scatter(x_val, y_val)
+
+    plt.title(play_log.title())
+    #plt.xlabel('Enemy Cell X')
+    #plt.ylabel('Enemy Cell Y')   
+
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+    plt.show()
+
+
+
+def plot_coin_cells(play_log=None):
+    if not play_log:
+        return
+    import pdb; pdb.set_trace()
+
+    # Import Library
+    from mpl_toolkits import mplot3d
+
+    # Projection
+    ax = plt.axes(projection="3d")
+
+    #fig = plt.figure()
+    #ax = plt.axes(projection ='3d')
+
+    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
+    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
+    ax.scatter(x_val, y_val, z_val)
+    #plt.scatter(x_val, y_val)
+
+    plt.title(play_log.title())
+    #plt.xlabel('Coin Cell X')
+    #plt.ylabel('Coin Cell Y')   
+
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
     plt.show()
 
 def plot_enemy_cells(play_log=None):
     if not play_log:
         return
 
+    # Import Library
+    from mpl_toolkits import mplot3d
+
+    # Projection
+    ax = plt.axes(projection="3d")
+
     x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
     y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
-    plt.scatter(x_val, y_val)
+    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
+    ax.scatter(x_val, y_val, z_val)
+    #plt.scatter(x_val, y_val)
 
     plt.title(play_log.title())
-    plt.xlabel('Enemy Cell X')
-    plt.ylabel('Enemy Cell Y')   
+    #plt.xlabel('Enemy Cell X')
+    #plt.ylabel('Enemy Cell Y')   
+
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
     plt.show()
 
 if __name__=='__main__':
@@ -765,7 +976,7 @@ if __name__=='__main__':
     #print("Coin position list", coin_position_list)
     #print(m.maze_map)
     #print("Coin objects: ", m._coins)
-    #bSearch,aStarPath,fwdPath,currentScore=aStar(m)
+    #bSearch,bfsPath,fwdPath,currentScore=BFS(m)
     #randomlyCollectAllCoins(m, coin_position_list)
     #score = collectNearestCoins(m, coin_position_list)
     #print("Score: ", score)
@@ -820,13 +1031,22 @@ if __name__=='__main__':
     #                      )
     greedy_res = play_game(objective_greedy)
     neutral_res = play_game(objective_neutral)
-    aggresive_res = play_game(objective_aggresive)
-    plot_convergence(("greedy res", greedy_res),
-                    ("neutral res", neutral_res),
-                    ("aggresive res", aggresive_res))
+    aggressive_res = play_game(objective_aggressive)
+    plot_convergence(("Greedy res", greedy_res),
+                    ("Neutral res", neutral_res),
+                    ("aggressive res", aggressive_res))
     plt.show()
 
     import pdb; pdb.set_trace()
+
+    plot_start_probability("Greedy res", "Coin", range(0,4), greedy_res)
+    plot_start_probability("Greedy res", "Enemy", range(4,8), greedy_res)
+
+    plot_start_probability("Neutral res", "Coin", range(0,4), greedy_res)
+    plot_start_probability("Neutral res", "Enemy", range(4,8), greedy_res)
+
+    plot_start_probability("aggressive res", "Coin", range(0,4), greedy_res)
+    plot_start_probability("aggressive res", "Enemy", range(4,8), greedy_res)
 
     plot_coin_probability(greedy_log)
     plot_enemy_probability(greedy_log)
@@ -834,17 +1054,21 @@ if __name__=='__main__':
     plot_coin_probability(neutral_log)
     plot_enemy_probability(neutral_log)
 
-    plot_coin_probability(aggresive_log)
-    plot_enemy_probability(aggresive_log)
+    plot_coin_probability(aggressive_log)
+    plot_enemy_probability(aggressive_log)
 
+    plot_3d_cells(greedy_log)
+    plot_3dshade_cells(greedy_log)
     plot_coin_cells(greedy_log)
     plot_enemy_cells(greedy_log)
 
+    plot_3d_cells(neutral_log)
     plot_coin_cells(neutral_log)
     plot_enemy_cells(neutral_log)
 
-    plot_coin_cells(aggresive_log)
-    plot_enemy_cells(aggresive_log)
+    plot_3d_cells(aggressive_log)
+    plot_coin_cells(aggressive_log)
+    plot_enemy_cells(aggressive_log)
 
     import pdb; pdb.set_trace()
     

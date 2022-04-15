@@ -330,7 +330,7 @@ class maze:
         if x+1<=self.rows:
             self.maze_map[x+1,y]['N']=1
     
-    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark,displayMaze=True):
+    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark,findPath=None,displayMaze=True):
         '''
         One very important function to create a Random Maze
         pattern-->  It can be 'v' for vertical or 'h' for horizontal
@@ -603,6 +603,10 @@ class maze:
                 f.seek(0, os.SEEK_END)
                 f.seek(f.tell()-2, os.SEEK_SET)
                 f.truncate()
+        if findPath:
+            self.findPath=findPath
+        else: 
+            self.findPath = BFS
 
     def _drawMaze(self,theme):
         '''
