@@ -81,10 +81,10 @@ class PlayLog:
     def score(self, score):
         self._log[PL_SCORE].append(score)
 
-greedy_log = PlayLog('Greedy Player')
-neutral_log = PlayLog('Neutral Player')
-aggresive_log = PlayLog('Aggresive Player')
-run_log = PlayLog('All Players')
+greedy_log = PlayLog("")
+neutral_log = PlayLog('')
+aggresive_log = PlayLog('')
+run_log = PlayLog('')
 
 def h(cell1, cell2):
     x1, y1 = cell1
@@ -675,7 +675,7 @@ def play_game(player, n_iter = 1):
     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
 
     np.random.seed(12345)
-    return [gp_minimize(player, dimensions = dimensions2x2, acq_func="PI" ,  n_initial_points = 10, n_calls = 300)
+    return [gp_minimize(player, dimensions = dimensions2x2, acq_func="PI" ,  n_initial_points = 10, n_calls = 50)
             for n in range(n_iter)]
         
 def plot_coin_probability(play_log=None):

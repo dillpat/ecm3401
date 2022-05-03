@@ -5,5 +5,5 @@ class Quadrant:
         self.boundaries = boundaries
         self.probability = probability
         self.base = boundaries[0]
-
-    
+        self.coin_positions = {}
+        self.enemy_positions = {}

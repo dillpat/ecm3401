@@ -1,15 +1,26 @@
-from pyagame import maze,agent,textLabel,COLOR
+from cmath import polar
+import random
 from collections import deque
+from re import T
+from tkinter import Label
+from unittest.case import _AssertWarnsContext
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
+from skopt import forest_minimize, gp_minimize
+from skopt.plots import (plot_convergence, plot_evaluations, plot_objective,
+                         plot_objective_2D)
+from skopt.space import Real
+
 from Coin import Coin
 from Enemy import Enemy
+from pyagame import COLOR, agent, maze, textLabel
 from Quadrant import Quadrant
-import random
-from skopt import gp_minimize, forest_minimize
-from skopt.space import Real
-from skopt.plots import plot_convergence, plot_evaluations, plot_objective, plot_objective_2D
-import matplotlib.pyplot as plt
 
+mpl.rcParams['axes.grid'] = True
+mpl.rcParams['axes.grid.which'] = 'both'
+mpl.rcParams['grid.linestyle'] = '--'
 
 MAZE_ROWS = 20
 MAZE_COLS = MAZE_ROWS
@@ -21,7 +32,7 @@ MAZE_EXIT = (1, 1)
 MAZE_START = (MAZE_ROWS, MAZE_COLS)
 MAX_COIN = MAX_ASSET
 MAX_ENEMY = MAX_ASSET
-MIN_PROB = (1 / MAX_COIN)
+MIN_PROB = (1 / MAX_ASSET)
 ENEMY_TARGET = 8
 COIN_TARGET = 80
 WEIGHT_GAIN = 10
@@ -82,7 +93,7 @@ class PlayLog:
 
 greedy_log = PlayLog('Greedy Player')
 neutral_log = PlayLog('Neutral Player')
-aggressive_log = PlayLog('aggressive Player')
+aggressive_log = PlayLog('Aggressive Player')
 run_log = PlayLog('All Players')
 
 #FIXME: when do you use avoid_enemy?
@@ -139,6 +150,8 @@ def BFS(m, start=None, goal=None, avoid_enemy = False):
 
 
 from queue import PriorityQueue
+
+
 def h(cell1, cell2):
     x1, y1 = cell1
     x2, y2 = cell2
@@ -202,16 +215,21 @@ def aStar(m, start=None, goal=None, avoid_enemy = False):
 def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
     coin_count = 0
     while coin_count < number:
+        # add coin to maze at given random cell
         cell = np.random.randint(low=RAND_LOW, high=RAND_HIGH, size=2)
         cell[0] += quadrant.base[0]
         cell[1] += quadrant.base[1]
         x=cell[0]
         y=cell[1]
-        if 'C' not in m.maze_map[x,y].keys():
+        if 'C' not in m.maze_map[x,y].keys() and  \
+           'A' not in m.maze_map[x,y].keys():       # cell not occupied by coin/enemy
             coin = Coin(m, x, y)
             coin_count += 1
             m.maze_map[x,y]['C'] = coin
             coin_position_list[x,y]=cell
+
+            # add coin to quadrant
+            quadrant.coin_positions[x,y]=cell
             #print(coin.cell)
     #print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
 
@@ -256,21 +274,25 @@ def collectNearestCoins(m, coin_position_list, start_cell = None, coin_target = 
     return start_position, steps
 
 def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
-    #import pdb; pdb.set_trace()
     enemy_count = 0
     while enemy_count < number:
+        # add enemy to maze at given random cell
         cell = np.random.randint(low=RAND_LOW, high=RAND_HIGH, size=2)
         cell[0] += quadrant.base[0]
         cell[1] += quadrant.base[1]
         x=cell[0]
         y=cell[1]
-        #FIXME: can an enemy and coin be in the same cell?
-        if 'A' not in m.maze_map[x,y].keys():
+        if 'A' not in m.maze_map[x,y].keys() and \
+           'C' not in m.maze_map[x,y].keys() :      # cell not occupied by coin/enemy
             enemy = Enemy(m, x, y)
             enemy_count += 1
             m.maze_map[x,y]['A'] = enemy
             enemy_list[x,y]=cell
+
+            # add coin to quadrant
+            quadrant.enemy_positions[x,y]=cell
             #print(enemy)
+
     ##print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
     #print("maze map: ", m.maze_map)
 
@@ -416,14 +438,68 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
 
     return distribution_dict
 
+# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
+#     def prob(p1, p2, p3):
+#         return abs(1-(p1 + p2 + p3))
+#     distribution_dict["qNW"].probability = prob(pNE, pSW, pSE) #pNW
+#     distribution_dict["qNE"].probability = prob(pNW, pSW, pSE) #pNE
+#     distribution_dict["qSW"].probability = prob(pNW, pNE, pSE) #pSW
+#     distribution_dict["qSE"].probability = prob(pNW, pNE, pSW) #pSE 
+
+#     assetCnt  = sum([int(MAX_ASSET * quadrant.probability) for quadrant in distribution_dict.values()])
+#     if not assetCnt:
+#         for quadrant in distribution_dict.values():
+#             quadrant.probability += MIN_PROB
+
+# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
+#     def prob(p1, p2, p3):
+#         return abs(1-(p1 + p2 + p3))
+
+#     probs = [pNW, pNE, pSW, pSE]
+#     min_prob = min(probs)
+#     max_prob = max(probs)
+
+#     def prob2(p1):
+#         return ((p1 - min_prob) / (max_prob - min_prob)) + 0.124
+    
+#     distribution_dict["qNW"].probability = prob2(pNW)
+#     distribution_dict["qNE"].probability = prob2(pNE)
+#     distribution_dict["qSW"].probability = prob2(pSW)
+#     if sum([pNW, pNE, pSW]) < 1:
+#         distribution_dict["qSE"].probability = (prob(pNW, pNE, pSW) / 4) + 0.124
+#     else:
+#         distribution_dict["qSE"].probability = prob2(pSE)
+
+
+
+# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
+#     def prob(p1, p2, p3):
+#         return abs(1-(p1 + p2 + p3))
+#     distribution_dict["qNW"].probability = (pNW / 4) + 0.124
+#     distribution_dict["qNE"].probability = (pNE / 4) + 0.124
+#     distribution_dict["qSW"].probability = (pSW / 4) + 0.124
+#     if sum([pNW, pNE, pSW]) < 1:
+#         distribution_dict["qSE"].probability = (prob(pNW, pNE, pSW) / 4) + 0.124
+#     else:
+#         distribution_dict["qSE"].probability = (pSE / 4) + 0.124
+
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
     def prob(p1, p2, p3):
-        return abs(1-(p1 + p2 + p3)) #+ 0.125
-    distribution_dict["qNW"].probability = prob(pNE, pSW, pSE) #pNW
-    distribution_dict["qNE"].probability = prob(pNW, pSW, pSE) #pNE
-    distribution_dict["qSW"].probability = prob(pNW, pNE, pSE) #pSW
-    distribution_dict["qSE"].probability = prob(pNW, pNE, pSW) #pSE
-    
+        return abs(1-(p1 + p2 + p3))
+    distribution_dict["qNW"].probability = pNW
+    distribution_dict["qNE"].probability = pNE
+    distribution_dict["qSW"].probability = pSW
+    if sum([pNW, pNE, pSW]) < 1:
+        distribution_dict["qSE"].probability = prob(pNW, pNE, pSW)
+    else:
+        distribution_dict["qSE"].probability = pSE
+
+    #distribution_dict["qSE"].probability = pSE if sum([pNW, pNE, pSW]) > 1 else 1-sum([pNW, pNE, pSW])
+
+    # assetCnt  = sum([int(MAX_ASSET * quadrant.probability) for quadrant in distribution_dict.values()])
+    # if not assetCnt:
+    #     for quadrant in distribution_dict.values():
+    #         quadrant.probability += MIN_PROB
 
 def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
 
@@ -432,17 +508,25 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
     coin_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
     setProbability(m, coin_quadrant_dict, cpNW, cpNE, cpSW, cpSE)
 
+    # order quadrants highest probability to lowest
+    coin_dict=dict(sorted(coin_quadrant_dict.items(), key=lambda x:x[1].probability, reverse=True))
+
     # Populate quadrants with coins
     coin_cells = {}
+    attempts = 0
     while len(coin_cells) < MAX_COIN:
-        for quadrant in coin_quadrant_dict.values():
-            #import pdb; pdb.set_trace()
-            #print("Coin Quad:", quadrant)
-            number = int(MAX_COIN * quadrant.probability)
-            #print("Add Coins:", number, " Prob:", quadrant.probability)
+        if attempts > 10:
+            import pdb; pdb.set_trace()
+        else:
+            attempts += 1
+        for quadrant in coin_dict.values():
             if len(coin_cells) >= MAX_COIN:
                 break
-            if number:
+            #import pdb; pdb.set_trace()
+            #print("Coin Quad:", quadrant)
+            if int(MAX_COIN * quadrant.probability):
+                number = int(MAX_COIN * quadrant.probability) if not len(quadrant.coin_positions) else 1
+                #print("Add Coins:", number, " Prob:", quadrant.probability)
                 total_coins = len(coin_cells)
                 if total_coins + number > MAX_COIN:
                     number = MAX_COIN - total_coins
@@ -453,7 +537,7 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
 
     ##print("Coin list: ", list(coin_cells))       
     run_log.coin_cells = list(coin_cells)
-    return list(coin_cells)
+    return list(coin_cells), coin_quadrant_dict
 
 def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     # Setting the probability of enemies in each quadrant
@@ -461,16 +545,24 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     enemy_quadrant_dict = createQuadrantDictionary(m, eNW, eNE, eSW, eSE)
     setProbability(m, enemy_quadrant_dict, epNW, epNE, epSW, epSE)
 
+    # order quadrants highest probability to lowest
+    enemy_dict=dict(sorted(enemy_quadrant_dict.items(), key=lambda x:x[1].probability, reverse=True))
+
     # Populate quadrants with enemies
     enemy_cells = {}
+    attempts = 0
     while len(enemy_cells) < MAX_ENEMY:
-        for quadrant in enemy_quadrant_dict.values():
-            #print("Enemy Quad:", quadrant)
-            number = int(MAX_ENEMY * quadrant.probability)
-            #print("Add Enemy:", number, " Prob:", quadrant.probability)
+        if attempts > 10:
+            import pdb; pdb.set_trace()
+        else:
+            attempts += 1
+        for quadrant in enemy_dict.values():
             if len(enemy_cells) >= MAX_ENEMY:
                 break
-            if number:
+            #print("Enemy Quad:", quadrant)
+            if int(MAX_COIN * quadrant.probability):
+                number = int(MAX_COIN * quadrant.probability) if not len(quadrant.coin_positions) else 1
+                #print("Add Enemy:", number, " Prob:", quadrant.probability)
                 total_enemy = len(enemy_cells)
                 if total_enemy + number > MAX_ENEMY:
                     number = MAX_ENEMY - total_enemy
@@ -480,7 +572,7 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
     
     ##print("enemy List: ", list(enemy_cells))
     run_log.enemy_cells = list(enemy_cells)
-    return list(enemy_cells)
+    return list(enemy_cells), enemy_quadrant_dict
 
 def player_style1(m, coin_list, enemy_list):
     '''
@@ -588,25 +680,46 @@ def neutral_player(m, coin_list, enemy_list, target = 0): #60):
 #def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
 def objective_greedy(dimensions2x2):
     #import pdb; pdb.set_trace()
+    # cpNW = dimensions2x2[0]
+    # cpNE = dimensions2x2[1]
+    # cpSW = dimensions2x2[2]
+    # cpSE = dimensions2x2[3]
+
+    # epNW = dimensions2x2[4]
+    # epNE = dimensions2x2[5]
+    # epSW = dimensions2x2[6]
+    # epSE = dimensions2x2[7]
+
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
-    cpSE = dimensions2x2[3]
+    cpSE = 0.0
 
-    epNW = dimensions2x2[4]
-    epNE = dimensions2x2[5]
-    epSW = dimensions2x2[6]
-    epSE = dimensions2x2[7]
-    greedy_log.gp_params = dimensions2x2
+    epNW = dimensions2x2[3]
+    epNE = dimensions2x2[4]
+    epSW = dimensions2x2[5]
+    epSE = 0.0
+    #greedy_log.gp_params = dimensions2x2
 
+    #print("cpSE: ", cpSE, "epSE: ", epSE)
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
-    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+    coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     greedy_log.coin_cells = coin_list
 
-    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+    enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     greedy_log.enemy_cells = enemy_list
+    greedy_log.gp_params = [coin_quad["qNW"].probability,
+                            coin_quad["qNE"].probability,
+                            coin_quad["qSW"].probability,
+                            coin_quad["qSE"].probability,
+                            enemy_quad["qNW"].probability,
+                            enemy_quad["qNE"].probability,
+                            enemy_quad["qSW"].probability,
+                            enemy_quad["qSE"].probability]
+
+    #greedy_log.gp_params = [quad.probability for quad in coin_quad.values()]+[quad.probability for quad in coin_quad.values()]
 
     total_steps = greedy_player(m, coin_list, enemy_list)
     greedy_log.score = total_steps
@@ -621,25 +734,44 @@ def objective_greedy(dimensions2x2):
 
 def objective_neutral(dimensions2x2):
     #import pdb; pdb.set_trace()
-    cpNW = dimensions2x2[0]    
+    # cpNW = dimensions2x2[0]
+    # cpNE = dimensions2x2[1]
+    # cpSW = dimensions2x2[2]
+    # cpSE = dimensions2x2[3]
+
+    # epNW = dimensions2x2[4]
+    # epNE = dimensions2x2[5]
+    # epSW = dimensions2x2[6]
+    # epSE = dimensions2x2[7]
+
+    cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
-    cpSE = dimensions2x2[3]
+    cpSE = 0.0
 
-    epNW = dimensions2x2[4]
-    epNE = dimensions2x2[5]
-    epSW = dimensions2x2[6]
-    epSE = dimensions2x2[7]
-    neutral_log.gp_params = dimensions2x2
+    epNW = dimensions2x2[3]
+    epNE = dimensions2x2[4]
+    epSW = dimensions2x2[5]
+    epSE = 0.0
+    #neutral_log.gp_params = dimensions2x2
 
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
-    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+    coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     neutral_log.coin_cells = coin_list
 
-    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+    enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     neutral_log.enemy_cells = enemy_list
+
+    neutral_log.gp_params = [coin_quad["qNW"].probability,
+                             coin_quad["qNE"].probability,
+                             coin_quad["qSW"].probability,
+                             coin_quad["qSE"].probability,
+                             enemy_quad["qNW"].probability,
+                             enemy_quad["qNE"].probability,
+                             enemy_quad["qSW"].probability,
+                             enemy_quad["qSE"].probability]
 
     total_steps = neutral_player(m, coin_list, enemy_list)
     neutral_log.score = total_steps
@@ -654,25 +786,44 @@ def objective_neutral(dimensions2x2):
     
 def objective_aggressive(dimensions2x2):
     #import pdb; pdb.set_trace()
+    # cpNW = dimensions2x2[0]
+    # cpNE = dimensions2x2[1]
+    # cpSW = dimensions2x2[2]
+    # cpSE = dimensions2x2[3]
+
+    # epNW = dimensions2x2[4]
+    # epNE = dimensions2x2[5]
+    # epSW = dimensions2x2[6]
+    # epSE = dimensions2x2[7]
+
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
-    cpSE = dimensions2x2[3]
+    cpSE = 0.0
 
-    epNW = dimensions2x2[4]
-    epNE = dimensions2x2[5]
-    epSW = dimensions2x2[6]
-    epSE = dimensions2x2[7]
-    aggressive_log.gp_params = dimensions2x2
+    epNW = dimensions2x2[3]
+    epNE = dimensions2x2[4]
+    epSW = dimensions2x2[5]
+    epSE = 0.0
+    #aggressive_log.gp_params = dimensions2x2
     
     m=maze(MAZE_ROWS, MAZE_COLS)
     m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
 
-    coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
+    coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     aggressive_log.coin_cells = coin_list
 
-    enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
+    enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     aggressive_log.enemy_cells = enemy_list
+
+    aggressive_log.gp_params = [coin_quad["qNW"].probability,
+                                coin_quad["qNE"].probability,
+                                coin_quad["qSW"].probability,
+                                coin_quad["qSE"].probability,
+                                enemy_quad["qNW"].probability,
+                                enemy_quad["qNE"].probability,
+                                enemy_quad["qSW"].probability,
+                                enemy_quad["qSE"].probability]
 
     total_steps = aggressive_player(m, coin_list, enemy_list)
     aggressive_log.score = total_steps
@@ -712,7 +863,7 @@ def objective_aggressive(dimensions2x2):
 #     return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 50)
 #             for n in range(n_iter)]
         
-def play_game(player, n_iter = 3):
+def play_game(player, style='', n_iter = 1):
     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
     # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
@@ -733,39 +884,96 @@ def play_game(player, n_iter = 3):
     # epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
     # epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
 
- 
+    print("Player Style: ", style)
+    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002, prior='log-uniform', base=2, transform='normalize')
+
+    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
+    # epSE = Real(name = 'epSE', low= 0.001, high = 0.002, prior='log-uniform', base=2, transform='normalize')
+
+    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002, prior='log-uniform', base=10, transform='normalize')
+
+    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
+    # epSE = Real(name = 'epSE', low= 0.001, high = 0.002, prior='log-uniform', base=10, transform='normalize')
+
     cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
     cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
     cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
+    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002)
 
     epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
     epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
     epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
+    epSE = Real(name = 'epSE', low= 0.001, high = 0.002)
 
-    dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
+    dimensions2x2 = [cpNW, cpNE , cpSW, epNW, epNE, epSW]
 
-    # Fixing random state for reproducibility
-    #np.random.seed(78912345)c
-
+    # Fixing random state for reproducibility of each player style
+    #np.random.seed(78912345)
     results = []
     for n in range(n_iter):
-        # Fixing random state for reproducibility
+        # Fixing random state for reproducibility of each play level
         np.random.seed(78912345)
-        res = gp_minimize(player, dimensions = dimensions2x2, acq_func="LCB", n_initial_points = 10, n_calls = 150)
-        print("res.fun", res.fun)
-        for i in range(len(res.x)):
-            if i > len(dimensions2x2):
-                break
-            dimensions2x2[i].high = res.x[i]
-        results.append(res)
+        # res = forest_minimize(player, dimensions = dimensions2x2, 
+        #                       base_estimator='ET', acq_func='EI', initial_point_generator='lhs', 
+        #                       random_state=54321987, n_points=5000, n_initial_points = 10, n_calls = 210)
 
+        # fairly good results(scale: 1-10)  7
+        # res = gp_minimize(
+        #          player,                
+        #          dimensions = dimensions2x2, 
+        #          n_calls=210,
+        #          n_random_starts=5, 
+        #          acq_func='EI',
+        #          acq_optimizer='lbfgs', 
+        #          x0=None, 
+        #          y0=None, 
+        #          random_state=1,
+        #          verbose=True, 
+        #          callback=None,
+        #          n_points=10000,
+        #          #n_restarts_optimizer=20,
+        #          n_restarts_optimizer=50,
+        #          xi=0.005,
+        #          kappa=1.96, 
+        #          noise=1e-10,
+        #          #noise=0.0001,
+        #          n_jobs=1,
+        #          initial_point_generator="lhs"
+        #          )
+
+        res = forest_minimize(player, dimensions=dimensions2x2, n_calls=210, n_initial_points=10, acq_func="EI", n_points=5000, initial_point_generator="grid", verbose=True)
+
+        # res = gp_minimize(
+        #          player,                
+        #          dimensions = dimensions2x2, 
+        #          n_calls=210,
+        #          n_initial_points=10,
+        #          acq_func="EI",
+        #          n_points="5000",
+        #          initial_point_generator="lhs",
+        #          noise=1e-10,
+        #          n_jobs=1
+        #          )
+        #print(n, ":res.fun", res.fun)
+        # for i in range(len(res.x)):
+        #     if i > len(dimensions2x2):
+        #         break
+        #     dimensions2x2[i].high = res.x[i]
+        results.append(res)
+    print("==============")
     return results
 
-
-
-def plot_coin_probability(play_log=None):
+def plot_coin_probability(play_log=None, show=True):
     if not play_log:
         return
 
@@ -776,15 +984,16 @@ def plot_coin_probability(play_log=None):
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements(num=4)[0], labels=['cpnw', 'cpne', 'cpsw', 'cpse'],
+    plt.legend(scatter.legend_elements()[0], labels=['cpnw', 'cpne', 'cpsw', 'cpse'],
                     loc="lower left", title="Quadrant Prob")
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
-    plt.ylabel('Coin Quadrant Probability')   
-    plt.show()
+    plt.ylabel('Coin Quadrant Probability')
+    if show:
+        plt.show()
 
-def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=None):
+def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=None, show=True):
     if not play_res:
         return
 
@@ -799,17 +1008,18 @@ def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=
     x_val = [x+1 for x in range(len(play_res))]
     for y in bound:
         y_val = [play_res[i].x[y] for i in range(len(play_res))]
-        scatter = plt.plot(x_val, y_val)
+        #scatter = plt.plot(x_val, y_val)
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements(num=4)[0], labels=tab,
+    plt.legend(scatter.legend_elements()[0], labels=tab,
                     loc="lower left", title="Quadrant Prob")
 
     plt.title(title + " " + asset)
     plt.xlabel('GP Run')
-    plt.ylabel('Probability')   
-    plt.show()
+    plt.ylabel('Probability')
+    if (show):   
+        plt.show()
 
 # plt.figure(figsize=(8,6))
 # sp_names = ['Adelie', 'Gentoo', 'Chinstrap']
@@ -820,13 +1030,13 @@ def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=
 # plt.xlabel("Culmen Length", size=24)
 # plt.ylabel("Culmen Depth", size=24)
 # # add legend to the plot with names
-# plt.legend(handles=scatter.legend_elements()[0], 
+# plt.legend(handles=scatter.legend_elements()[0],
 #            labels=sp_names,
 #            title="species")
 # plt.savefig("scatterplot_colored_by_variable_with_legend_matplotlib_Python.png",
 #                     format='png',dpi=
 
-def plot_enemy_probability(play_log=None):
+def plot_enemy_probability(play_log=None, show=True):
     if not play_log:
         return
 
@@ -837,15 +1047,16 @@ def plot_enemy_probability(play_log=None):
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements(num=4)[0], labels=['epnw', 'epne', 'epsw', 'epse'],
+    plt.legend(scatter.legend_elements()[0], labels=['epnw', 'epne', 'epsw', 'epse'],
                     loc="lower left", title="Quadrant Prob")
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
-    plt.ylabel('Enemy Quadrant Probability')   
-    plt.show()
+    plt.ylabel('Enemy Quadrant Probability') 
+    if show:  
+        plt.show()
 
-def plot_3d_cells(play_log=None):
+def plot_3d_cells(play_log=None, show=True):
     if not play_log:
         return
 
@@ -853,98 +1064,64 @@ def plot_3d_cells(play_log=None):
     from mpl_toolkits import mplot3d
 
     # Projection
+    fig = plt.figure()
     ax = plt.axes(projection="3d")
 
-    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
-    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
+    x_val = [r[1] for cells in play_log.coin_cells for r in cells]
+    y_val = [c[0] for cells in play_log.coin_cells for c in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)) for _ in range(MAX_COIN)]
     ax.scatter(x_val, y_val, z_val, marker='o')
 
-    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
-    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
+    x_val = [r[1] for cells in play_log.enemy_cells for r in cells]
+    y_val = [c[0] for cells in play_log.enemy_cells for c in cells]
+    z_val = [z for z in range(len(play_log.enemy_cells)) for _ in range(MAX_ENEMY)]
     ax.scatter(x_val, y_val, z_val, marker='^')
-    #plt.scatter(x_val, y_val)
 
-    plt.title(play_log.title())
-    #plt.xlabel('Enemy Cell X')
-    #plt.ylabel('Enemy Cell Y')   
-
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    plt.show()
-
-def plot_3dshade_cells(play_log=None):
+    ax.legend(['Coin', 'Enemy'])
+    ax.set_title(play_log.title())
+    ax.set_xlabel('Cell Column')
+    ax.set_ylabel('Cell Row')
+    ax.set_zlabel('Game Level')
+    if show:
+        plt.show()
+ 
+def plot_3dshade_cells(play_log=None, show=True):
     if not play_log:
         return
 
     from matplotlib import cm
     from matplotlib.colors import LightSource
-
     # Import Library
     from mpl_toolkits import mplot3d
 
     # Projection
+    fig = plt.figure()
     ax = plt.axes(projection="3d")
     ls = LightSource(270, 45)
 
-    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
-    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
+    x_val = [r[1] for cells in play_log.coin_cells for r in cells]
+    y_val = [c[0] for cells in play_log.coin_cells for c in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)) for _ in range(MAX_COIN)]
     #ax.scatter(x_val, y_val, z_val, marker='o')
-    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1, facecolors=rgb,
+    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1,
                        linewidth=0, antialiased=False, shade=False)
 
-    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
-    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
-    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1, facecolors=rgb,
+    x_val = [r[1] for cells in play_log.enemy_cells for r in cells]
+    y_val = [c[0] for cells in play_log.enemy_cells for c in cells]
+    z_val = [z for z in range(len(play_log.enemy_cells)) for _ in range(MAX_ENEMY)]
+    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1,
                        linewidth=0, antialiased=False, shade=False)
     #ax.scatter(x_val, y_val, z_val, marker='^')
-    #plt.scatter(x_val, y_val)
 
-    plt.title(play_log.title())
-    #plt.xlabel('Enemy Cell X')
-    #plt.ylabel('Enemy Cell Y')   
+    ax.legend(['Coin', 'Enemy'])
+    ax.set_title(play_log.title())
+    ax.set_xlabel('Cell Column')
+    ax.set_ylabel('Cell Row')
+    ax.set_zlabel('Game Level')
+    if show:
+        plt.show()
 
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    plt.show()
-
-
-
-def plot_coin_cells(play_log=None):
-    if not play_log:
-        return
-    import pdb; pdb.set_trace()
-
-    # Import Library
-    from mpl_toolkits import mplot3d
-
-    # Projection
-    ax = plt.axes(projection="3d")
-
-    #fig = plt.figure()
-    #ax = plt.axes(projection ='3d')
-
-    x_val = [x[1] for cells in play_log.coin_cells for x in cells]
-    y_val = [x[0] for cells in play_log.coin_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_COIN)]
-    ax.scatter(x_val, y_val, z_val)
-    #plt.scatter(x_val, y_val)
-
-    plt.title(play_log.title())
-    #plt.xlabel('Coin Cell X')
-    #plt.ylabel('Coin Cell Y')   
-
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    plt.show()
-
-def plot_enemy_cells(play_log=None):
+def plot_coin_cells(play_log=None, show=True):
     if not play_log:
         return
 
@@ -952,22 +1129,135 @@ def plot_enemy_cells(play_log=None):
     from mpl_toolkits import mplot3d
 
     # Projection
+    fig = plt.figure()
     ax = plt.axes(projection="3d")
 
-    x_val = [x[1] for cells in play_log.enemy_cells for x in cells]
-    y_val = [x[0] for cells in play_log.enemy_cells for x in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)*MAX_ENEMY)]
-    ax.scatter(x_val, y_val, z_val)
-    #plt.scatter(x_val, y_val)
+    x_val = [r[1] for cells in play_log.coin_cells for r in cells]
+    y_val = [c[0] for cells in play_log.coin_cells for c in cells]
+    z_val = [z for z in range(len(play_log.coin_cells)) for _ in range(MAX_COIN)]
+    ax.scatter(x_val, y_val, z_val, marker='o')
 
-    plt.title(play_log.title())
-    #plt.xlabel('Enemy Cell X')
-    #plt.ylabel('Enemy Cell Y')   
+    ax.set_title(play_log.title())
+    ax.set_xlabel('Coin Column')
+    ax.set_ylabel('Coin Row')
+    ax.set_zlabel('Game Level')
+    if show:
+        plt.show()
 
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
+def plot_enemy_cells(play_log=None, show=True):
+    if not play_log:
+        return
+
+    # Import Library
+    from mpl_toolkits import mplot3d
+
+    # Projection
+    fig = plt.figure()
+    ax = plt.axes(projection="3d")
+
+    x_val = [r[1] for cells in play_log.enemy_cells for r in cells]
+    y_val = [c[0] for cells in play_log.enemy_cells for c in cells]
+    z_val = [z for z in range(len(play_log.enemy_cells)) for _ in range(MAX_ENEMY)]
+    ax.scatter(x_val, y_val, z_val, marker='^', c='orange')
+
+    ax.set_title(play_log.title())
+    ax.set_xlabel('Enemy Column')
+    ax.set_ylabel('Enemy Row')
+    ax.set_zlabel('Game Level')
+    if show:
+        plt.show()
+
+def plot_res(greedy_res, neutral_res, aggressive_res):
+    plot_start_probability("Greedy res", "Coin", range(0,3), greedy_res)
+    plot_start_probability("Greedy res", "Enemy", range(3,6), greedy_res)
+
+    plot_start_probability("Neutral res", "Coin", range(0,3), neutral_res)
+    plot_start_probability("Neutral res", "Enemy", range(3,6), neutral_res)
+
+    plot_start_probability("aggressive res", "Coin", range(0,3), aggressive_res)
+    plot_start_probability("aggressive res", "Enemy", range(3,6), aggressive_res)
+
+    plot_coin_probability(greedy_log)
+    plot_enemy_probability(greedy_log)
+
+    plot_coin_probability(neutral_log)
+    plot_enemy_probability(neutral_log)
+
+    plot_coin_probability(aggressive_log)
+    plot_enemy_probability(aggressive_log)
+
+    plot_3d_cells(greedy_log)
+    plot_coin_cells(greedy_log)
+    plot_enemy_cells(greedy_log)
+
+    plot_3d_cells(neutral_log)
+    plot_coin_cells(neutral_log)
+    plot_enemy_cells(neutral_log)
+
+    plot_3d_cells(aggressive_log)
+    plot_coin_cells(aggressive_log)
+    plot_enemy_cells(aggressive_log)
+
+
+def plot_rescmp(greedy_res, neutral_res, aggressive_res):
+    plt.subplot(1, 3, 1)
+    plot_start_probability("Greedy res", "Coin", range(0,3), greedy_res, show=False)
+    plt.subplot(1, 3, 2)
+    plot_start_probability("Neutral res", "Coin", range(0,3), neutral_res, show=False)
+    plt.subplot(1, 3, 3)
+    plot_start_probability("aggressive res", "Coin", range(0,3), aggressive_res, show=False)
     plt.show()
+
+    plt.subplot(1, 3, 1)
+    plot_start_probability("Greedy res", "Enemy", range(3,6), greedy_res, show=False)
+    plt.subplot(1, 3, 2)
+    plot_start_probability("Neutral res", "Enemy", range(3,6), neutral_res, show=False)
+    plt.subplot(1, 3, 3)
+    plot_start_probability("aggressive res", "Enemy", range(3,6), aggressive_res, show=False)
+    plt.show()
+
+    plt.subplot(1, 3, 1)
+    plot_coin_probability(greedy_log, show=False)
+    plt.subplot(1, 3, 2)
+    plot_coin_probability(neutral_log, show=False)
+    plt.subplot(1, 3, 3)
+    plot_coin_probability(aggressive_log, show=False)
+    plt.show()
+
+    plt.subplot(1, 3, 1)
+    plot_enemy_probability(greedy_log, show=False)
+    plt.subplot(1, 3, 2)
+    plot_enemy_probability(neutral_log, show=False)
+    plt.subplot(1, 3, 3)
+    plot_enemy_probability(aggressive_log, show=False)
+    plt.show()
+
+    #fig = plt.figure(figsize=plt.figaspect(0.5))
+   # fig.add_subplot(1, 3, 1, projection="3d")
+    plot_3d_cells(greedy_log, show=False)
+    #fig.add_subplot(1, 3, 2, projection="3d")
+    plot_3d_cells(neutral_log, show=False)
+    #fig.add_subplot(1, 3, 3, projection="3d")
+    plot_3d_cells(aggressive_log, show=False)
+    #plt.show()
+
+    #plt.subplot(1, 3, 1, projection="3d")
+    plot_coin_cells(greedy_log, show=False)
+    #plt.subplot(1, 3, 2, projection="3d")
+    plot_coin_cells(neutral_log, show=False)
+    #plt.subplot(1, 3, 3, projection="3d")
+    plot_coin_cells(aggressive_log, show=False)
+    #plt.show()
+
+    #plt.subplot(1, 3, 1)
+    plot_enemy_cells(greedy_log, show=False)
+    #plt.subplot(1, 3, 2)
+    plot_enemy_cells(neutral_log, show=False)
+    #plt.subplot(1, 3, 3)
+    plot_enemy_cells(aggressive_log, show=False)
+    plt.show()
+
+
 
 if __name__=='__main__':
 
@@ -1030,46 +1320,19 @@ if __name__=='__main__':
     #                      dimension_identifier1='epNW',
     #                      dimension_identifier2='cpNW'
     #                      )
-    greedy_res = play_game(objective_greedy)
-    neutral_res = play_game(objective_neutral)
-    aggressive_res = play_game(objective_aggressive)
+    greedy_res = play_game(objective_greedy, "Greedy")
+    neutral_res = play_game(objective_neutral, "Neutral")
+    aggressive_res = play_game(objective_aggressive, "Aggressive")
     plot_convergence(("Greedy res", greedy_res),
                     ("Neutral res", neutral_res),
                     ("aggressive res", aggressive_res))
+    plt.grid()
     plt.show()
 
     import pdb; pdb.set_trace()
 
-    plot_start_probability("Greedy res", "Coin", range(0,4), greedy_res)
-    plot_start_probability("Greedy res", "Enemy", range(4,8), greedy_res)
-
-    plot_start_probability("Neutral res", "Coin", range(0,4), greedy_res)
-    plot_start_probability("Neutral res", "Enemy", range(4,8), greedy_res)
-
-    plot_start_probability("aggressive res", "Coin", range(0,4), greedy_res)
-    plot_start_probability("aggressive res", "Enemy", range(4,8), greedy_res)
-
-    plot_coin_probability(greedy_log)
-    plot_enemy_probability(greedy_log)
-
-    plot_coin_probability(neutral_log)
-    plot_enemy_probability(neutral_log)
-
-    plot_coin_probability(aggressive_log)
-    plot_enemy_probability(aggressive_log)
-
-    plot_3d_cells(greedy_log)
-    plot_3dshade_cells(greedy_log)
-    plot_coin_cells(greedy_log)
-    plot_enemy_cells(greedy_log)
-
-    plot_3d_cells(neutral_log)
-    plot_coin_cells(neutral_log)
-    plot_enemy_cells(neutral_log)
-
-    plot_3d_cells(aggressive_log)
-    plot_coin_cells(aggressive_log)
-    plot_enemy_cells(aggressive_log)
+   # plot_res(greedy_res, neutral_res, aggressive_res)
+    plot_rescmp(greedy_res, neutral_res, aggressive_res)
 
     import pdb; pdb.set_trace()
     
