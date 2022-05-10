@@ -1,6 +1,6 @@
 class Enemy:
 
-    def __init__(self, parentMaze,  x=None, y=None, health=10):
+    def __init__(self, parentMaze, x=None, y=None, health=10):
         self._parentMaze=parentMaze
         self.x=x
         self.y=y
@@ -10,11 +10,6 @@ class Enemy:
         self.defeated=False
         return
 
-    """
-    How health would work, player go to defuser, then to enemy, runs function which
-    calculates 50/50 odds to kill enemy, plyaer has 8 tries before it has to go back
-    to defuser to get more health.
-    """
     @property
     def x(self):
         return self._x

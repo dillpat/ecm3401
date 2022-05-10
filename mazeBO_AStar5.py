@@ -1,16 +1,17 @@
 from cmath import polar
 import random
 from collections import deque
-from re import T
+from queue import PriorityQueue
+from re import L, T
 from tkinter import Label
 from unittest.case import _AssertWarnsContext
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
 import numpy as np
 from skopt import forest_minimize, gp_minimize
-from skopt.plots import (plot_convergence, plot_evaluations, plot_objective,
-                         plot_objective_2D)
+from skopt.plots import plot_convergence
 from skopt.space import Real
 
 from Coin import Coin
@@ -30,6 +31,7 @@ MAX_ASSET  = 8
 MAZE_DIFFICULTY = 7
 MAZE_EXIT = (1, 1)
 MAZE_START = (MAZE_ROWS, MAZE_COLS)
+MAZE_LEVEL_FIXED = False
 MAX_COIN = MAX_ASSET
 MAX_ENEMY = MAX_ASSET
 MIN_PROB = (1 / MAX_ASSET)
@@ -37,11 +39,15 @@ ENEMY_TARGET = 8
 COIN_TARGET = 80
 WEIGHT_GAIN = 10
 
-
 PL_COIN_CELLS  = 'coin_cells'
+PL_COIN_DIST   = 'coin_dist'
 PL_ENEMY_CELLS = 'enemy_cells'
+PL_ENEMY_DIST  = 'enemy_dist'
 PL_GP_PARAMS   = 'gp_params'
 PL_SCORE       = 'score'
+PL_QUADS       = ['qNW', 'qNE', 'qSW', 'qSE']
+
+
 class PlayLog:
     """
     
@@ -51,7 +57,9 @@ class PlayLog:
         
         """
         self._player = player
-        self._log = {PL_COIN_CELLS:[], PL_ENEMY_CELLS:[], PL_GP_PARAMS:[], PL_SCORE:[]}
+        self._log = {PL_COIN_CELLS:[], PL_COIN_DIST:[], 
+                     PL_ENEMY_CELLS:[], PL_ENEMY_DIST:[],
+                     PL_GP_PARAMS:[], PL_SCORE:[]}
 
     def add_asset(self, asset, cells):
         self._log[asset].append(cells)
@@ -68,12 +76,28 @@ class PlayLog:
         self._log[PL_COIN_CELLS].append(cells)
 
     @property
+    def coin_dist(self):
+        return (self._log[PL_COIN_DIST])
+
+    @coin_dist.setter
+    def coin_dist(self, dist):
+        self._log[PL_COIN_DIST].append(dist)
+
+    @property
     def enemy_cells(self):
         return (self._log[PL_ENEMY_CELLS])
 
     @enemy_cells.setter
     def enemy_cells(self, cells):
         self._log[PL_ENEMY_CELLS].append(cells)
+
+    @property
+    def enemy_dist(self):
+        return (self._log[PL_ENEMY_DIST])
+
+    @enemy_dist.setter
+    def enemy_dist(self, dist):
+        self._log[PL_ENEMY_DIST].append(dist)
 
     @property
     def gp_params(self):
@@ -85,7 +109,7 @@ class PlayLog:
 
     @property
     def score(self):
-        return (self._log[PL_GP_PARAMS])
+        return (self._log[PL_SCORE])
 
     @score.setter
     def score(self, score):
@@ -96,8 +120,8 @@ neutral_log = PlayLog('Neutral Player')
 aggressive_log = PlayLog('Aggressive Player')
 run_log = PlayLog('All Players')
 
-#FIXME: when do you use avoid_enemy?
-def BFS(m, start=None, goal=None, avoid_enemy = False):
+
+def BFS(m, start=None, goal=None):
     if start is None:
         start=(m.rows,m.cols)
     if goal is None:
@@ -131,8 +155,6 @@ def BFS(m, start=None, goal=None, avoid_enemy = False):
                 bfsPath[nextCell] = currCell
                 bSearch.append(nextCell)
         
-    #print("BFS PATH----")
-    #print(f'{bfsPath}')
     fwdPath={}
     cell=goal
     while cell!=(start):
@@ -149,15 +171,14 @@ def BFS(m, start=None, goal=None, avoid_enemy = False):
     return bSearch, bfsPath, fwdPath, weight
 
 
-from queue import PriorityQueue
+def aStar(m, start=None, goal=None):
 
+    def h(cell1, cell2):
+        """ Manhattan method """
+        x1, y1 = cell1
+        x2, y2 = cell2
+        return (abs(x1 - x2) + abs(y1 - y2))
 
-def h(cell1, cell2):
-    x1, y1 = cell1
-    x2, y2 = cell2
-    return (abs(x1 - x2) + abs(y1 - y2))
-
-def aStar(m, start=None, goal=None, avoid_enemy = False):
     if start is None:
         start=(m.rows,m.cols)
     if goal is None:
@@ -230,8 +251,6 @@ def addCoins(m, quadrant, coin_position_list = {}, number=MAX_COIN):
 
             # add coin to quadrant
             quadrant.coin_positions[x,y]=cell
-            #print(coin.cell)
-    #print("Coin quadrant list", len(coin_position_list)," : ", coin_position_list)
 
 
 def findNearestCoin(m, start_position, coin_position_list):
@@ -245,9 +264,9 @@ def findNearestCoin(m, start_position, coin_position_list):
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_coin_cell = cell
-    #print("Distance", distance)
-    #print("Nearest Coin Cell", nearest_coin_cell)
+
     return nearest_coin_cell
+
 
 def collectNearestCoins(m, coin_position_list, start_cell = None, coin_target = COIN_TARGET):
     if start_cell is None:
@@ -262,16 +281,15 @@ def collectNearestCoins(m, coin_position_list, start_cell = None, coin_target = 
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
-                #print("found coin", coin)
                 coin.collected = True
                 currentScore += coin.value
                 steps += (len(fwdPath)+1)
-                #print("Coin Value: ", currentScore, coin.value)
         start_position = nearest_coin
         if currentScore >= coin_target:
             break
-        #print("steps: ", steps)
+
     return start_position, steps
+
 
 def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
     enemy_count = 0
@@ -291,10 +309,6 @@ def addEnemy(m, quadrant, enemy_list = {}, number = MAX_ENEMY):
 
             # add coin to quadrant
             quadrant.enemy_positions[x,y]=cell
-            #print(enemy)
-
-    ##print("quadrant_enemy_list: ", len(enemy_list)," : ", enemy_list)
-    #print("maze map: ", m.maze_map)
 
 
 def findNearestEnemy(m, start_position, enemy_list):
@@ -308,11 +322,9 @@ def findNearestEnemy(m, start_position, enemy_list):
             if (len(fwdPath)+1) < distance:
                 distance = (len(fwdPath)+1)
                 nearest_enemy_cell = cell
-    ##print("Distance", distance)
-    ##print("Nearest Enemy Cell", nearest_enemy_cell)
-    #if nearest_enemy_cell == (1,1) and distance == 100000:
-        #import pdb; pdb.set_trace()
+
     return nearest_enemy_cell
+
 
 def combatNearestEnemy(m, enemy_list, start_cell = None, player_health = 80, enemy_target = ENEMY_TARGET):
     current_health = player_health
@@ -332,34 +344,26 @@ def combatNearestEnemy(m, enemy_list, start_cell = None, player_health = 80, ene
                 if enemy.defeated:
                     enemy_killed += 1
                     steps += (len(fwdPath)+1)
-                    #print("Enemy Path: ", fwdPath)
                 # current health will tell you if enemy is defeated
                 if current_health == 0:
                     current_health, stepsRH, home = restoreHealth(m, current_health, enemy)
                     steps += stepsRH
                     nearest_enemy = home
-                    ##print("End health :", current_health)
-                    #print("Number of enemies killed: ", enemy_killed_track)
-                    #combatNearestEnemy(m, enemy_list)
-                    #if nearest_enemy == (1,1):
-                        #break
-                ##print( "Player_health", current_health)
-                ##print("Number of enemies killed: ", enemy_killed)
         start_position = nearest_enemy
-    ##print("TOTAL STEP: ", steps)
+
     return start_position, steps
 
+
 def combat(enemy, player_health):
-    #player_health = 80
     while player_health > 0:
         if random.randint(0,10) > MAZE_DIFFICULTY:
-            ##print("enemy defeated")
             enemy.defeated = True
             break
         else:
             player_health -= enemy.health
-    ##print("fighting health: ", player_health)
+
     return player_health
+
 
 """
 return back to start method from current position then restore player_health to 80
@@ -372,21 +376,9 @@ def restoreHealth(m, current_health, enemy):
         bSearch,aPath,fwdPath,weight = m.findPath(m, current_position, home)
         steps += (len(fwdPath)+1)
         current_health = 80
-        #print("Path: ", fwdPath)
     else:
         home = current_position
     return current_health, steps, home
-
-# def fightEnemy(m, start_position, enemy_list):
-#     nearest_enemy_to_start = findNearestEnemy(m, start_position, enemy_list)
-#     player_health = 80
-#     #while True:
-#     #if agent.position == nearest_enemy_to_start:
-#     for i in range(len(enemy_list)):
-#         if random.randint(0,10) > 3:
-#             nearest_enemy = findNearestEnemy(m, start_position, enemy_list)
-#         else:
-#             player_health -= 10
 
 
 def divideQuadrants(m):
@@ -423,12 +415,8 @@ def divideQuadrants(m):
     cSE.append((height_max, half_width + 1))
     cSE.append((height_max, width_max))
 
-    #print("NW", cNW)
-    #print("NE", cNE)
-    #print("sW", cSW)
-    #print("SE", cSE)
-
     return cNW, cNE, cSW, cSE
+
 
 def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
     distribution_dict = {"qNW":Quadrant(m, cNW),\
@@ -438,71 +426,20 @@ def createQuadrantDictionary(m,cNW, cNE, cSW, cSE):
 
     return distribution_dict
 
-# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-#     def prob(p1, p2, p3):
-#         return abs(1-(p1 + p2 + p3))
-#     distribution_dict["qNW"].probability = prob(pNE, pSW, pSE) #pNW
-#     distribution_dict["qNE"].probability = prob(pNW, pSW, pSE) #pNE
-#     distribution_dict["qSW"].probability = prob(pNW, pNE, pSE) #pSW
-#     distribution_dict["qSE"].probability = prob(pNW, pNE, pSW) #pSE 
-
-#     assetCnt  = sum([int(MAX_ASSET * quadrant.probability) for quadrant in distribution_dict.values()])
-#     if not assetCnt:
-#         for quadrant in distribution_dict.values():
-#             quadrant.probability += MIN_PROB
-
-# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-#     def prob(p1, p2, p3):
-#         return abs(1-(p1 + p2 + p3))
-
-#     probs = [pNW, pNE, pSW, pSE]
-#     min_prob = min(probs)
-#     max_prob = max(probs)
-
-#     def prob2(p1):
-#         return ((p1 - min_prob) / (max_prob - min_prob)) + 0.124
-    
-#     distribution_dict["qNW"].probability = prob2(pNW)
-#     distribution_dict["qNE"].probability = prob2(pNE)
-#     distribution_dict["qSW"].probability = prob2(pSW)
-#     if sum([pNW, pNE, pSW]) < 1:
-#         distribution_dict["qSE"].probability = (prob(pNW, pNE, pSW) / 4) + 0.124
-#     else:
-#         distribution_dict["qSE"].probability = prob2(pSE)
-
-
-
-# def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-#     def prob(p1, p2, p3):
-#         return abs(1-(p1 + p2 + p3))
-#     distribution_dict["qNW"].probability = (pNW / 4) + 0.124
-#     distribution_dict["qNE"].probability = (pNE / 4) + 0.124
-#     distribution_dict["qSW"].probability = (pSW / 4) + 0.124
-#     if sum([pNW, pNE, pSW]) < 1:
-#         distribution_dict["qSE"].probability = (prob(pNW, pNE, pSW) / 4) + 0.124
-#     else:
-#         distribution_dict["qSE"].probability = (pSE / 4) + 0.124
 
 def setProbability(m, distribution_dict, pNW = 0.25, pNE = 0.25, pSW = 0.25, pSE = 0.25):
-    def prob(p1, p2, p3):
-        return abs(1-(p1 + p2 + p3))
-    distribution_dict["qNW"].probability = pNW
-    distribution_dict["qNE"].probability = pNE
-    distribution_dict["qSW"].probability = pSW
     if sum([pNW, pNE, pSW]) < 1:
-        distribution_dict["qSE"].probability = prob(pNW, pNE, pSW)
-    else:
-        distribution_dict["qSE"].probability = pSE
+        pSE = 1 - sum([pNW, pNE, pSW])
 
-    #distribution_dict["qSE"].probability = pSE if sum([pNW, pNE, pSW]) > 1 else 1-sum([pNW, pNE, pSW])
+    # reset quadrant probabilities proportionally
+    pSum = sum([pNW, pNE, pSW, pSE])
+    distribution_dict["qNW"].probability = pNW/pSum
+    distribution_dict["qNE"].probability = pNE/pSum
+    distribution_dict["qSW"].probability = pSW/pSum
+    distribution_dict["qSE"].probability = pSE/pSum
 
-    # assetCnt  = sum([int(MAX_ASSET * quadrant.probability) for quadrant in distribution_dict.values()])
-    # if not assetCnt:
-    #     for quadrant in distribution_dict.values():
-    #         quadrant.probability += MIN_PROB
 
 def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
-
     # Setting the probability of coins in each quadrant
     cNW, cNE, cSW, cSE = divideQuadrants(m)
     coin_quadrant_dict = createQuadrantDictionary(m, cNW, cNE, cSW, cSE)
@@ -513,29 +450,17 @@ def distributeCoinAssets(m,  cpNW, cpNE, cpSW, cpSE):
 
     # Populate quadrants with coins
     coin_cells = {}
-    attempts = 0
     while len(coin_cells) < MAX_COIN:
-        if attempts > 10:
-            import pdb; pdb.set_trace()
-        else:
-            attempts += 1
         for quadrant in coin_dict.values():
             if len(coin_cells) >= MAX_COIN:
                 break
-            #import pdb; pdb.set_trace()
-            #print("Coin Quad:", quadrant)
             if int(MAX_COIN * quadrant.probability):
                 number = int(MAX_COIN * quadrant.probability) if not len(quadrant.coin_positions) else 1
-                #print("Add Coins:", number, " Prob:", quadrant.probability)
                 total_coins = len(coin_cells)
                 if total_coins + number > MAX_COIN:
                     number = MAX_COIN - total_coins
                 addCoins(m, quadrant, coin_cells, number)
-                #print("Quad: ", quadrant.base, "Number: ", number)
-            #print("Coin Quadrant: ", quadrant.base)
-            #print("Coin dict: ", coin_cells)
 
-    ##print("Coin list: ", list(coin_cells))       
     run_log.coin_cells = list(coin_cells)
     return list(coin_cells), coin_quadrant_dict
 
@@ -550,46 +475,22 @@ def distributeEnemyAssets(m, epNW, epNE, epSW, epSE):
 
     # Populate quadrants with enemies
     enemy_cells = {}
-    attempts = 0
     while len(enemy_cells) < MAX_ENEMY:
-        if attempts > 10:
-            import pdb; pdb.set_trace()
-        else:
-            attempts += 1
         for quadrant in enemy_dict.values():
             if len(enemy_cells) >= MAX_ENEMY:
                 break
-            #print("Enemy Quad:", quadrant)
             if int(MAX_COIN * quadrant.probability):
                 number = int(MAX_COIN * quadrant.probability) if not len(quadrant.coin_positions) else 1
-                #print("Add Enemy:", number, " Prob:", quadrant.probability)
                 total_enemy = len(enemy_cells)
                 if total_enemy + number > MAX_ENEMY:
                     number = MAX_ENEMY - total_enemy
                 addEnemy(m, quadrant, enemy_cells, number)
-            #print("Enemy Quadrant: ", quadrant.base)
-            #print("Enemy dict: ", enemy_cells)
     
-    ##print("enemy List: ", list(enemy_cells))
     run_log.enemy_cells = list(enemy_cells)
     return list(enemy_cells), enemy_quadrant_dict
 
-def player_style1(m, coin_list, enemy_list):
-    '''
-    Player style where you collect all the coins and defeat all the enemies
-    '''
-    _, steps_coins = collectNearestCoins(m, coin_list)
-    
-    _, steps_enemy = combatNearestEnemy(m, enemy_list)
 
-    total_steps = steps_coins + steps_enemy
-    return total_steps
 
-## def greedy 
-'''
-The objective of this player is to collect all the coins without fighting any enemies. This means collecting coins 1-8, without 
-fighting any enemies. So all enemies must be avoided and pathed around. If no path then choose the quickest route.
-'''
 def findOnlyCoin(m, start_position, coin_position_list):
     """
     """
@@ -597,12 +498,13 @@ def findOnlyCoin(m, start_position, coin_position_list):
     distance = 100000
     for cell in coin_position_list:
         if not m.maze_map[cell]['C'].collected: 
-            bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, cell, avoid_enemy=False)
+            bSearch,aPath,fwdPath,weight = m.findPath(m, start_position, cell)
             if (weight) < distance:
                     distance = (weight)
                     nearest_coin_cell = cell
 
     return nearest_coin_cell
+
 
 def collectOnlyCoins(m, coin_position_list, start_cell = None, coin_target = COIN_TARGET):
     if start_cell is None:
@@ -617,22 +519,22 @@ def collectOnlyCoins(m, coin_position_list, start_cell = None, coin_target = COI
         if ('C' in m.maze_map[nearest_coin]):
             coin = m.maze_map[nearest_coin]['C']
             if not coin.collected:
-                #print("found coin", coin)
                 coin.collected = True
-                #print("collected")
                 currentScore += coin.value
-               # print("score: ", currentScore)
                 steps += (len(fwdPath)+1)
-        #print(" coin path: ", fwdPath)
-        #print("Coin Value: ", currentScore, coin.value)
         start_position = nearest_coin
         if currentScore >= coin_target:
             break
-        #print("steps: ", steps)
+
     return start_position, steps
 
 
-def greedy_player(m, coin_list, enemy_list, target = 0): #35):
+## def greedy 
+'''
+The objective of this player is to collect all the coins without fighting any enemies. This means collecting coins 1-8, without 
+fighting any enemies. So all enemies must be avoided and pathed around. If no path then choose the quickest route.
+'''
+def greedy_player(m, coin_list, enemy_list, target = 0):
     total_steps = 0
     new_position, steps_coins = collectOnlyCoins(m, coin_list, start_cell=MAZE_START, coin_target=80)
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=new_position, enemy_target=0)
@@ -643,12 +545,13 @@ def greedy_player(m, coin_list, enemy_list, target = 0): #35):
     score = total_steps - target
     return score
 
+
 ## def aggressive
 ''''
 This player wants to fight all the enemies, this player only cares about fighting 1-8 enemies, it does not matter if the player
 collects any coins, they just care about fighting the enemy
 '''
-def aggressive_player(m, coin_list, enemy_list, target = 0): #50):
+def aggressive_player(m, coin_list, enemy_list, target = 0):
     total_steps = 0
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=MAZE_START, enemy_target=8)
     new_position, steps_coins = collectNearestCoins(m, coin_list, start_cell=new_position, coin_target=0)
@@ -659,14 +562,14 @@ def aggressive_player(m, coin_list, enemy_list, target = 0): #50):
     score = total_steps - target
     return score
 
-## def middle
+
+## def neutral
 '''
 This player wants to partake in both objectives, fighting 1-8 enemies or collecting 1-8 coins, the player fights the enemies
 first, the enemies that are set as defeated are allowed to be passed over by the player when he is collecting the coins. 
 Otherwise he will have to path around
 '''
-
-def neutral_player(m, coin_list, enemy_list, target = 0): #60):
+def neutral_player(m, coin_list, enemy_list, target = 0):
     total_steps = 0
     new_position, steps_enemy = combatNearestEnemy(m, enemy_list, start_cell=MAZE_START, enemy_target=5)
     new_position, steps_coins = collectOnlyCoins(m, coin_list, start_cell=new_position, coin_target=40)
@@ -677,19 +580,28 @@ def neutral_player(m, coin_list, enemy_list, target = 0): #60):
     score = total_steps - target
     return score
 
-#def objective(cpNW, cpNE, cpSW, cpSE, epNW, epNE, epSW, epSE, *args, **kwargs):
+
+g_maze = None
+def init_maze(m = None):
+    if m is None:
+        m=maze(MAZE_ROWS, MAZE_COLS)
+        m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
+        return m
+
+    # clear any coin records in maze cells
+    for cell in m.maze_map.values():
+        if 'C' in cell:
+            cell.pop('C')
+
+    # clear any enemy records in maze cells
+    for cell in m.maze_map.values():
+        if 'A' in cell:
+            cell.pop('A')
+
+    return m
+
+
 def objective_greedy(dimensions2x2):
-    #import pdb; pdb.set_trace()
-    # cpNW = dimensions2x2[0]
-    # cpNE = dimensions2x2[1]
-    # cpSW = dimensions2x2[2]
-    # cpSE = dimensions2x2[3]
-
-    # epNW = dimensions2x2[4]
-    # epNE = dimensions2x2[5]
-    # epSW = dimensions2x2[6]
-    # epSE = dimensions2x2[7]
-
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
@@ -699,51 +611,31 @@ def objective_greedy(dimensions2x2):
     epNE = dimensions2x2[4]
     epSW = dimensions2x2[5]
     epSE = 0.0
-    #greedy_log.gp_params = dimensions2x2
 
-    #print("cpSE: ", cpSE, "epSE: ", epSE)
-    m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
+    # create and initialise maze object
+    global g_maze
+    m = init_maze(g_maze)
+    g_maze = m if MAZE_LEVEL_FIXED else None
 
     coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     greedy_log.coin_cells = coin_list
+    greedy_log.coin_dist = [len(coin_quad[k].coin_positions) for k in PL_QUADS]
 
     enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     greedy_log.enemy_cells = enemy_list
-    greedy_log.gp_params = [coin_quad["qNW"].probability,
-                            coin_quad["qNE"].probability,
-                            coin_quad["qSW"].probability,
-                            coin_quad["qSE"].probability,
-                            enemy_quad["qNW"].probability,
-                            enemy_quad["qNE"].probability,
-                            enemy_quad["qSW"].probability,
-                            enemy_quad["qSE"].probability]
+    greedy_log.enemy_dist = [len(enemy_quad[k].enemy_positions) for k in PL_QUADS]
 
-    #greedy_log.gp_params = [quad.probability for quad in coin_quad.values()]+[quad.probability for quad in coin_quad.values()]
+    greedy_log.gp_params = [cpNW, cpNE, cpSW, coin_quad["qSE"].probability,
+                            epNW, epNE, epSW, enemy_quad["qSE"].probability]
 
     total_steps = greedy_player(m, coin_list, enemy_list)
     greedy_log.score = total_steps
 
-    if 1.0 - (cpNW + cpNE + cpSW + cpSE) < 1.0:
-        total_steps += 300
-
-    if 1.0 - (epNW + epNE + epSW + epSE) < 1.0:
-        total_steps += 300
-
+    print('Greedy steps:', total_steps)
     return total_steps
 
+
 def objective_neutral(dimensions2x2):
-    #import pdb; pdb.set_trace()
-    # cpNW = dimensions2x2[0]
-    # cpNE = dimensions2x2[1]
-    # cpSW = dimensions2x2[2]
-    # cpSE = dimensions2x2[3]
-
-    # epNW = dimensions2x2[4]
-    # epNE = dimensions2x2[5]
-    # epSW = dimensions2x2[6]
-    # epSE = dimensions2x2[7]
-
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
@@ -753,49 +645,31 @@ def objective_neutral(dimensions2x2):
     epNE = dimensions2x2[4]
     epSW = dimensions2x2[5]
     epSE = 0.0
-    #neutral_log.gp_params = dimensions2x2
 
-    m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
+    # create and initialise maze
+    global g_maze
+    m = init_maze(g_maze)
+    g_maze = m if MAZE_LEVEL_FIXED else None
 
     coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     neutral_log.coin_cells = coin_list
+    neutral_log.coin_dist = [len(coin_quad[k].coin_positions) for k in PL_QUADS]
 
     enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     neutral_log.enemy_cells = enemy_list
+    neutral_log.enemy_dist = [len(enemy_quad[k].enemy_positions) for k in PL_QUADS]
 
-    neutral_log.gp_params = [coin_quad["qNW"].probability,
-                             coin_quad["qNE"].probability,
-                             coin_quad["qSW"].probability,
-                             coin_quad["qSE"].probability,
-                             enemy_quad["qNW"].probability,
-                             enemy_quad["qNE"].probability,
-                             enemy_quad["qSW"].probability,
-                             enemy_quad["qSE"].probability]
+    neutral_log.gp_params = [cpNW, cpNE, cpSW, coin_quad["qSE"].probability,
+                             epNW, epNE, epSW, enemy_quad["qSE"].probability]
 
     total_steps = neutral_player(m, coin_list, enemy_list)
     neutral_log.score = total_steps
 
-    if 1.0 - (cpNW + cpNE + cpSW + cpSE) < 1:
-        total_steps += 300
-
-    if 1.0 - (epNW + epNE + epSW + epSE) < 1:
-        total_steps += 300
-
+    print('Neutral steps:', total_steps)
     return total_steps
     
+
 def objective_aggressive(dimensions2x2):
-    #import pdb; pdb.set_trace()
-    # cpNW = dimensions2x2[0]
-    # cpNE = dimensions2x2[1]
-    # cpSW = dimensions2x2[2]
-    # cpSE = dimensions2x2[3]
-
-    # epNW = dimensions2x2[4]
-    # epNE = dimensions2x2[5]
-    # epSW = dimensions2x2[6]
-    # epSE = dimensions2x2[7]
-
     cpNW = dimensions2x2[0]
     cpNE = dimensions2x2[1]
     cpSW = dimensions2x2[2]
@@ -805,175 +679,110 @@ def objective_aggressive(dimensions2x2):
     epNE = dimensions2x2[4]
     epSW = dimensions2x2[5]
     epSE = 0.0
-    #aggressive_log.gp_params = dimensions2x2
     
-    m=maze(MAZE_ROWS, MAZE_COLS)
-    m.CreateMaze(loopPercent=20, findPath=aStar, displayMaze=False)
+    # create and initialise maze
+    global g_maze
+    m = init_maze(g_maze)
+    g_maze = m if MAZE_LEVEL_FIXED else None
 
     coin_list, coin_quad = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
     aggressive_log.coin_cells = coin_list
+    aggressive_log.coin_dist = [len(coin_quad[k].coin_positions) for k in PL_QUADS]
 
     enemy_list, enemy_quad = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
     aggressive_log.enemy_cells = enemy_list
+    aggressive_log.enemy_dist = [len(enemy_quad[k].enemy_positions) for k in PL_QUADS]
 
-    aggressive_log.gp_params = [coin_quad["qNW"].probability,
-                                coin_quad["qNE"].probability,
-                                coin_quad["qSW"].probability,
-                                coin_quad["qSE"].probability,
-                                enemy_quad["qNW"].probability,
-                                enemy_quad["qNE"].probability,
-                                enemy_quad["qSW"].probability,
-                                enemy_quad["qSE"].probability]
+    aggressive_log.gp_params = [cpNW, cpNE, cpSW, coin_quad["qSE"].probability,
+                                epNW, epNE, epSW, enemy_quad["qSE"].probability]
 
     total_steps = aggressive_player(m, coin_list, enemy_list)
     aggressive_log.score = total_steps
     
-    if 1.0 - (cpNW + cpNE + cpSW + cpSE) < 1:
-        total_steps += 300
-
-    if 1.0 - (epNW + epNE + epSW + epSE) < 1:
-        total_steps += 300
-
+    print('Aggressive steps:', total_steps)
     return total_steps
 
-# def play_game(player, n_iter = 5):
-#     # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
-#     # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
-#     # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
-#     # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.250)
-
-#     # epNW = Real(name = 'epNW', low= 0.001, high = 0.250)
-#     # epNE = Real(name = 'epNE', low= 0.125, high = 0.375)
-#     # epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
-#     # epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
-
-#     cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
-#     cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
-#     cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
-#     cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
-
-#     epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
-#     epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
-#     epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
-#     epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
-
-#     dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
-
-#     np.random.seed(12345)
-#     return [forest_minimize(player, dimensions = dimensions2x2, n_initial_points = 10, n_calls = 50)
-#             for n in range(n_iter)]
         
 def play_game(player, style='', n_iter = 1):
-    # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.625)
-    # cpNE = Real(name = 'cpNE', low= 0.125, high = 0.375)
-    # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.375)
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.250)
-
-    # epNW = Real(name = 'epNW', low= 0.001, high = 0.250)
-    # epNE = Real(name = 'epNE', low= 0.125, high = 0.375)
-    # epSW = Real(name = 'epSW', low= 0.125, high = 0.375)
-    # epSE = Real(name = 'epSE', low= 0.125, high = 0.625)
-
-    # cpNW = Real(name = 'cpNW', low= 0.125, high = 0.875)
-    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.875)
-    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.875)
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.875)
-
-    # epNW = Real(name = 'epNW', low= 0.125, high = 0.875)
-    # epNE = Real(name = 'epNE', low= 0.001, high = 0.875)
-    # epSW = Real(name = 'epSW', low= 0.001, high = 0.875)
-    # epSE = Real(name = 'epSE', low= 0.001, high = 0.875)
-
     print("Player Style: ", style)
-    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002, prior='log-uniform', base=2, transform='normalize')
 
-    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999, prior='log-uniform', base=2, transform='normalize')
-    # epSE = Real(name = 'epSE', low= 0.001, high = 0.002, prior='log-uniform', base=2, transform='normalize')
+    #  Biased
+    # cpNW = Real(name = 'cpNW', low= 0.500, high = 0.999)
+    # cpNE = Real(name = 'cpNE', low= 0.250, high = 0.999)
+    # cpSW = Real(name = 'cpSW', low= 0.125, high = 0.999)
 
-    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002, prior='log-uniform', base=10, transform='normalize')
+    # epNW = Real(name = 'epNW', low= 0.500, high = 0.999)
+    # epNE = Real(name = 'epNE', low= 0.250, high = 0.999)
+    # epSW = Real(name = 'epSW', low= 0.125, high = 0.999)
 
-    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999, prior='log-uniform', base=10, transform='normalize')
-    # epSE = Real(name = 'epSE', low= 0.001, high = 0.002, prior='log-uniform', base=10, transform='normalize')
-
+    # Non-biased
     cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
     cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
     cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    cpSE = Real(name = 'cpSE', low= 0.001, high = 0.002)
 
     epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
     epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
     epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    epSE = Real(name = 'epSE', low= 0.001, high = 0.002)
 
-    dimensions2x2 = [cpNW, cpNE , cpSW, epNW, epNE, epSW]
-
-    # Fixing random state for reproducibility of each player style
-    #np.random.seed(78912345)
+    dimensions2x2 = [cpNW, cpNE, cpSW, epNW, epNE, epSW]
     results = []
     for n in range(n_iter):
         # Fixing random state for reproducibility of each play level
         np.random.seed(78912345)
         # res = forest_minimize(player, dimensions = dimensions2x2, 
-        #                       base_estimator='ET', acq_func='EI', initial_point_generator='lhs', 
-        #                       random_state=54321987, n_points=5000, n_initial_points = 10, n_calls = 210)
+        #                       base_estimator='ET', acq_func='EI', initial_point_generator='grid', 
+        #                       random_state=1, n_points=5000, n_initial_points = 10, n_calls = 510, xi=0.005, verbose=True)
 
-        # fairly good results(scale: 1-10)  7
-        # res = gp_minimize(
-        #          player,                
-        #          dimensions = dimensions2x2, 
-        #          n_calls=210,
-        #          n_random_starts=5, 
-        #          acq_func='EI',
-        #          acq_optimizer='lbfgs', 
-        #          x0=None, 
-        #          y0=None, 
-        #          random_state=1,
-        #          verbose=True, 
-        #          callback=None,
-        #          n_points=10000,
-        #          #n_restarts_optimizer=20,
-        #          n_restarts_optimizer=50,
-        #          xi=0.005,
-        #          kappa=1.96, 
-        #          noise=1e-10,
-        #          #noise=0.0001,
-        #          n_jobs=1,
-        #          initial_point_generator="lhs"
-        #          )
+        # fairly good results(scale: 1-10)  6.5-7.0 (date:02-05-2022)
+        # res = forest_minimize(player, dimensions = dimensions2x2,
+        #                   base_estimator='ET', acq_func='EI', initial_point_generator='lhs',
+        #                   random_state=1, n_points=5000, n_initial_points = 10, n_calls = 510, xi=0.005, verbose=True)
 
-        res = forest_minimize(player, dimensions=dimensions2x2, n_calls=500, n_initial_points=10, acq_func="EI", n_points=5000, initial_point_generator="grid", verbose=True)
+        # ## fairly good results(scale: 1-10)  7 but SE has zero entries most times
+        res = gp_minimize(player, 
+                          dimensions=dimensions2x2, 
+                          n_calls=210, 
+                          n_initial_points=10, 
+                          acq_func="EI",  
+                          initial_point_generator="grid", 
+                          noise=1e-10,
+                          verbose=True
+                          )
 
+        # ## fairly good results(scale: 1-10)  5
         # res = gp_minimize(
         #          player,                
         #          dimensions = dimensions2x2, 
         #          n_calls=210,
         #          n_initial_points=10,
-        #          acq_func="EI",
-        #          n_points="5000",
-        #          initial_point_generator="lhs",
+        #          acq_func='EI',
+        #          n_points=5000,
+        #          initial_point_generator='lhs',
         #          noise=1e-10,
-        #          n_jobs=1
+        #          verbose=True
         #          )
-        #print(n, ":res.fun", res.fun)
-        # for i in range(len(res.x)):
-        #     if i > len(dimensions2x2):
-        #         break
-        #     dimensions2x2[i].high = res.x[i]
+
+        # ## fairly good results(scale: 1-10)  6
+        # res = gp_minimize(
+        #          player,                
+        #          dimensions = dimensions2x2, 
+        #          n_calls=210,
+        #          n_initial_points=10,
+        #          acq_func='EI',
+        #          n_points=5000,
+        #          initial_point_generator='random',
+        #          noise=1e-10,
+        #          verbose=True
+        #          )
+
+        print(n, ":res.fun", res.fun)
         results.append(res)
+
     print("==============")
     return results
 
-def plot_coin_probability(play_log=None, show=True):
+
+def plot_coin_probability(play_log=None, show=True, legend=True):
     if not play_log:
         return
 
@@ -984,8 +793,9 @@ def plot_coin_probability(play_log=None, show=True):
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements()[0], labels=['cpnw', 'cpne', 'cpsw', 'cpse'],
-                    loc="lower left", title="Quadrant Prob")
+    if legend:
+        plt.legend(scatter.legend_elements()[0], labels=['cpnw', 'cpne', 'cpsw', 'cpse'],
+                   title="Quadrant Prob", bbox_to_anchor=(1.01, 1), borderaxespad=0)
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
@@ -993,7 +803,8 @@ def plot_coin_probability(play_log=None, show=True):
     if show:
         plt.show()
 
-def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=None, show=True):
+
+def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=None, show=True, legend=True):
     if not play_res:
         return
 
@@ -1008,35 +819,21 @@ def plot_start_probability(title = "GP", asset = '', bound = range(0), play_res=
     x_val = [x+1 for x in range(len(play_res))]
     for y in bound:
         y_val = [play_res[i].x[y] for i in range(len(play_res))]
-        #scatter = plt.plot(x_val, y_val)
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements()[0], labels=tab,
-                    loc="lower left", title="Quadrant Prob")
+    if legend:
+        plt.legend(scatter.legend_elements()[0], labels=tab,
+                   title="Quadrant Prob", bbox_to_anchor=(1.01, 1), borderaxespad=0)
 
     plt.title(title + " " + asset)
     plt.xlabel('GP Run')
-    plt.ylabel('Probability')
+    plt.ylabel('Best Start Probability')
     if (show):   
         plt.show()
 
-# plt.figure(figsize=(8,6))
-# sp_names = ['Adelie', 'Gentoo', 'Chinstrap']
-# scatter = plt.scatter(df.culmen_length_mm, 
-#             df.culmen_depth_mm,
-#             s=150,
-#             c=df.species.astype('category').cat.codes)
-# plt.xlabel("Culmen Length", size=24)
-# plt.ylabel("Culmen Depth", size=24)
-# # add legend to the plot with names
-# plt.legend(handles=scatter.legend_elements()[0],
-#            labels=sp_names,
-#            title="species")
-# plt.savefig("scatterplot_colored_by_variable_with_legend_matplotlib_Python.png",
-#                     format='png',dpi=
 
-def plot_enemy_probability(play_log=None, show=True):
+def plot_enemy_probability(play_log=None, show=True, legend=True):
     if not play_log:
         return
 
@@ -1047,8 +844,9 @@ def plot_enemy_probability(play_log=None, show=True):
         scatter = plt.scatter(x_val, y_val)
 
     # produce a legend with the unique colors from the scatter
-    plt.legend(scatter.legend_elements()[0], labels=['epnw', 'epne', 'epsw', 'epse'],
-                    loc="lower left", title="Quadrant Prob")
+    if legend:
+        plt.legend(scatter.legend_elements()[0], labels=['epnw', 'epne', 'epsw', 'epse'],
+                   title="Quadrant Prob", bbox_to_anchor=(1.01, 1), borderaxespad=0)
 
     plt.title(play_log.title())
     plt.xlabel('GP Run')
@@ -1059,9 +857,6 @@ def plot_enemy_probability(play_log=None, show=True):
 def plot_3d_cells(play_log=None, show=True):
     if not play_log:
         return
-
-    # Import Library
-    from mpl_toolkits import mplot3d
 
     # Projection
     fig = plt.figure()
@@ -1085,48 +880,10 @@ def plot_3d_cells(play_log=None, show=True):
     if show:
         plt.show()
  
-def plot_3dshade_cells(play_log=None, show=True):
-    if not play_log:
-        return
-
-    from matplotlib import cm
-    from matplotlib.colors import LightSource
-    # Import Library
-    from mpl_toolkits import mplot3d
-
-    # Projection
-    fig = plt.figure()
-    ax = plt.axes(projection="3d")
-    ls = LightSource(270, 45)
-
-    x_val = [r[1] for cells in play_log.coin_cells for r in cells]
-    y_val = [c[0] for cells in play_log.coin_cells for c in cells]
-    z_val = [z for z in range(len(play_log.coin_cells)) for _ in range(MAX_COIN)]
-    #ax.scatter(x_val, y_val, z_val, marker='o')
-    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1,
-                       linewidth=0, antialiased=False, shade=False)
-
-    x_val = [r[1] for cells in play_log.enemy_cells for r in cells]
-    y_val = [c[0] for cells in play_log.enemy_cells for c in cells]
-    z_val = [z for z in range(len(play_log.enemy_cells)) for _ in range(MAX_ENEMY)]
-    surf = ax.plot_surface(x_val, y_val, z_val, rstride=1, cstride=1,
-                       linewidth=0, antialiased=False, shade=False)
-    #ax.scatter(x_val, y_val, z_val, marker='^')
-
-    ax.legend(['Coin', 'Enemy'])
-    ax.set_title(play_log.title())
-    ax.set_xlabel('Cell Column')
-    ax.set_ylabel('Cell Row')
-    ax.set_zlabel('Game Level')
-    if show:
-        plt.show()
 
 def plot_coin_cells(play_log=None, show=True):
     if not play_log:
         return
-
-    # Import Library
-    from mpl_toolkits import mplot3d
 
     # Projection
     fig = plt.figure()
@@ -1144,12 +901,10 @@ def plot_coin_cells(play_log=None, show=True):
     if show:
         plt.show()
 
+
 def plot_enemy_cells(play_log=None, show=True):
     if not play_log:
         return
-
-    # Import Library
-    from mpl_toolkits import mplot3d
 
     # Projection
     fig = plt.figure()
@@ -1167,172 +922,107 @@ def plot_enemy_cells(play_log=None, show=True):
     if show:
         plt.show()
 
-def plot_res(greedy_res, neutral_res, aggressive_res):
-    plot_start_probability("Greedy res", "Coin", range(0,3), greedy_res)
-    plot_start_probability("Greedy res", "Enemy", range(3,6), greedy_res)
 
-    plot_start_probability("Neutral res", "Coin", range(0,3), neutral_res)
-    plot_start_probability("Neutral res", "Enemy", range(3,6), neutral_res)
+def plot_asset_dist(dist, title='', show=True, legend=True):
+    def count(id, dist):
+        return sum([quad[id] for quad in dist])
+    # sum the coin/enemy distribution in each quadrant over all calls
+    dNW = [count(0, d) for d in dist]
+    dNE = [count(1, d) for d in dist]
+    dSW = [count(2, d) for d in dist]
+    dSE = [count(3, d) for d in dist]
 
-    plot_start_probability("aggressive res", "Coin", range(0,3), aggressive_res)
-    plot_start_probability("aggressive res", "Enemy", range(3,6), aggressive_res)
+    # setup bar labels
+    labels = ['Greedy', 'Neutral', 'Aggressive']
+    x = np.arange(len(labels))  # the label locations
+    width = 0.4                 # the width of the bars
 
-    plot_coin_probability(greedy_log)
-    plot_enemy_probability(greedy_log)
+    # plot each quadrant bar--aligned using left edge of bar for positioning
+    rects1 = plt.bar(x - width/2, dNW, width/4, label='North West', align='edge')
+    rects2 = plt.bar(x - width/4, dNE, width/4, label='North East', align='edge')
+    rects3 = plt.bar(x, dSW, width/4, label='South West', align='edge')
+    rects4 = plt.bar(x + width/4, dSE, width/4, label='South East', align='edge')
 
-    plot_coin_probability(neutral_log)
-    plot_enemy_probability(neutral_log)
+    # add some text for labels, title and custom x-axis tick labels, etc.
+    plt.ylabel('Distribution')
+    plt.title(title + ' ' + 'Distribution by Player and Quadrant')
+    plt.xticks(x, labels)
 
-    plot_coin_probability(aggressive_log)
-    plot_enemy_probability(aggressive_log)
+    # label each bar with total counts
+    plt.bar_label(rects1, padding=3)
+    plt.bar_label(rects2, padding=3)
+    plt.bar_label(rects3, padding=3)
+    plt.bar_label(rects4, padding=3)
+    if legend:
+        plt.legend(bbox_to_anchor=(1.01, 1))  # add keys legend top left of figure 
+    if show:
+        plt.show()
 
-    plot_3d_cells(greedy_log)
-    plot_coin_cells(greedy_log)
-    plot_enemy_cells(greedy_log)
 
-    plot_3d_cells(neutral_log)
-    plot_coin_cells(neutral_log)
-    plot_enemy_cells(neutral_log)
-
-    plot_3d_cells(aggressive_log)
-    plot_coin_cells(aggressive_log)
-    plot_enemy_cells(aggressive_log)
+def plot_dist(show=True):
+    plt.subplot(1, 2, 1)
+    plot_asset_dist([greedy_log.coin_dist, neutral_log.coin_dist, aggressive_log.coin_dist], title='Coin', show=False, legend=False)
+    plt.subplot(1, 2, 2)
+    plot_asset_dist([greedy_log.enemy_dist, neutral_log.enemy_dist, aggressive_log.enemy_dist], title='Enemy', show=True, legend=True)
 
 
 def plot_rescmp(greedy_res, neutral_res, aggressive_res):
     plt.subplot(1, 3, 1)
-    plot_start_probability("Greedy res", "Coin", range(0,3), greedy_res, show=False)
+    plot_start_probability("Greedy res", "Coin", range(0,3), greedy_res, show=False, legend=False)
     plt.subplot(1, 3, 2)
-    plot_start_probability("Neutral res", "Coin", range(0,3), neutral_res, show=False)
+    plot_start_probability("Neutral res", "Coin", range(0,3), neutral_res, show=False, legend=False)
     plt.subplot(1, 3, 3)
-    plot_start_probability("aggressive res", "Coin", range(0,3), aggressive_res, show=False)
-    plt.show()
+    plot_start_probability("Aggressive res", "Coin", range(0,3), aggressive_res, show=True, legend=True)
 
     plt.subplot(1, 3, 1)
-    plot_start_probability("Greedy res", "Enemy", range(3,6), greedy_res, show=False)
+    plot_start_probability("Greedy res", "Enemy", range(3,6), greedy_res, show=False, legend=False)
     plt.subplot(1, 3, 2)
-    plot_start_probability("Neutral res", "Enemy", range(3,6), neutral_res, show=False)
+    plot_start_probability("Neutral res", "Enemy", range(3,6), neutral_res, show=False, legend=False)
     plt.subplot(1, 3, 3)
-    plot_start_probability("aggressive res", "Enemy", range(3,6), aggressive_res, show=False)
-    plt.show()
+    plot_start_probability("Aggressive res", "Enemy", range(3,6), aggressive_res, show=True, legend=True)
 
     plt.subplot(1, 3, 1)
-    plot_coin_probability(greedy_log, show=False)
+    plot_coin_probability(greedy_log, show=False, legend=False)
     plt.subplot(1, 3, 2)
-    plot_coin_probability(neutral_log, show=False)
+    plot_coin_probability(neutral_log, show=False, legend=False)
     plt.subplot(1, 3, 3)
-    plot_coin_probability(aggressive_log, show=False)
-    plt.show()
+    plot_coin_probability(aggressive_log, show=True, legend=True)
 
     plt.subplot(1, 3, 1)
-    plot_enemy_probability(greedy_log, show=False)
+    plot_enemy_probability(greedy_log, show=False, legend=False)
     plt.subplot(1, 3, 2)
-    plot_enemy_probability(neutral_log, show=False)
+    plot_enemy_probability(neutral_log, show=False, legend=False)
     plt.subplot(1, 3, 3)
-    plot_enemy_probability(aggressive_log, show=False)
-    plt.show()
+    plot_enemy_probability(aggressive_log, show=True, legend=True)
 
-    #fig = plt.figure(figsize=plt.figaspect(0.5))
-   # fig.add_subplot(1, 3, 1, projection="3d")
     plot_3d_cells(greedy_log, show=False)
-    #fig.add_subplot(1, 3, 2, projection="3d")
     plot_3d_cells(neutral_log, show=False)
-    #fig.add_subplot(1, 3, 3, projection="3d")
     plot_3d_cells(aggressive_log, show=False)
-    #plt.show()
 
-    #plt.subplot(1, 3, 1, projection="3d")
     plot_coin_cells(greedy_log, show=False)
-    #plt.subplot(1, 3, 2, projection="3d")
     plot_coin_cells(neutral_log, show=False)
-    #plt.subplot(1, 3, 3, projection="3d")
     plot_coin_cells(aggressive_log, show=False)
-    #plt.show()
 
-    #plt.subplot(1, 3, 1)
     plot_enemy_cells(greedy_log, show=False)
-    #plt.subplot(1, 3, 2)
     plot_enemy_cells(neutral_log, show=False)
-    #plt.subplot(1, 3, 3)
-    plot_enemy_cells(aggressive_log, show=False)
-    plt.show()
-
+    plot_enemy_cells(aggressive_log, show=True)
 
 
 if __name__=='__main__':
-
-    #m=maze(MAZE_ROWS, MAZE_COLS)
-    #m.CreateMaze(loopPercent=70, displayMaze=False)
-    #coin_position_list = addCoins(m)
-    #print("Coin position list", coin_position_list)
-    #print(m.maze_map)
-    #print("Coin objects: ", m._coins)
-    #bSearch,bfsPath,fwdPath,currentScore=BFS(m)
-    #randomlyCollectAllCoins(m, coin_position_list)
-    #score = collectNearestCoins(m, coin_position_list)
-    #print("Score: ", score)
-    #start_position = (m.rows,m.cols)
-    #enemy_list = addEnemy(m)
-    #print("enemy list", enemy_list)
-
-    #divideQuadrants(m)
-
-    #Quadrant probabilities for coin
-    # cpNW = 0.123
-    # cpNE = 0.453
-    # cpSW = 0.345
-    # cpSE = 0.079
-    # coin_list = distributeCoinAssets(m, cpNW, cpNE, cpSW, cpSE)
-
-    # #Quadrant probabiltiies for enemy
-    # epNW = 0.244
-    # epNE = 0.700
-    # epSW = 0.020
-    # epSE = 0.036
-    # enemy_list = distributeEnemyAssets(m, epNW, epNE, epSW, epSE)
-
-    # combatNearestEnemy(m, enemy_list)
-
-    
-    # cpNW = Real(name = 'cpNW', low= 0.001, high = 0.999)
-    # cpNE = Real(name = 'cpNE', low= 0.001, high = 0.999)
-    # cpSW = Real(name = 'cpSW', low= 0.001, high = 0.999)
-    # cpSE = Real(name = 'cpSE', low= 0.001, high = 0.999)
-
-    # epNW = Real(name = 'epNW', low= 0.001, high = 0.999)
-    # epNE = Real(name = 'epNE', low= 0.001, high = 0.999)
-    # epSW = Real(name = 'epSW', low= 0.001, high = 0.999)
-    # epSE = Real(name = 'epSE', low= 0.001, high = 0.999)
-
-    # dimensions2x2 = [cpNW, cpNE , cpSW, cpSE , epNW, epNE, epSW, epSE]
-
-    # res = gp_minimize(objective, dimensions = dimensions2x2, n_calls = 20)
-
-    # print("Best Result: ", res.fun)
-
-    # print("Best Paramters: ", res.x)
-
-    # plot_convergence(res)
-
-    #_ = plot_evaluations(res) # this one works plots samples vs probability 
-    #_ = plot_objective(res, n_samples=40)
-    #_ = plot_objective_2D(result = res,
-    #                      dimension_identifier1='epNW',
-    #                      dimension_identifier2='cpNW'
-    #                      )
+    # play the game with three player profiles
     greedy_res = play_game(objective_greedy, "Greedy")
     neutral_res = play_game(objective_neutral, "Neutral")
     aggressive_res = play_game(objective_aggressive, "Aggressive")
-    plot_convergence(("Greedy res", greedy_res),
-                    ("Neutral res", neutral_res),
-                    ("aggressive res", aggressive_res))
-    plt.grid()
-    plt.show()
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
-   # plot_res(greedy_res, neutral_res, aggressive_res)
+    # plot optimization convergence results per player profile
+    plot_convergence(("Greedy res", greedy_res), ("Neutral res", neutral_res), ("Aggressive res", aggressive_res))
+    plt.grid(); plt.show()
+
+    # plot per quadrant coin/enemy distribution per player profile
+    plot_dist()
+
+    # plot objective function parameter space optimization results per player profile
+    # and 3d visualise coin/enemy distribution 
     plot_rescmp(greedy_res, neutral_res, aggressive_res)
-
-    import pdb; pdb.set_trace()
-    

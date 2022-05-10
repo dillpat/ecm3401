@@ -4,13 +4,12 @@ import numpy as np
 from Coin import Coin
 
 m=maze(10,10)
-m.CreateMaze(loopPercent=60)
+m.CreateMaze(loopPercent=20)
 a=agent(m, footprints=True)
-m.tracePath({a:m.path})
+#m.tracePath({a:m.path})
 
-
-# #m.enableWASD(a)
-# #m.enableArrowKey(a)
+m.enableWASD(a)
+m.enableArrowKey(a)
 #print("Path length: ", len(m.path))
 
 

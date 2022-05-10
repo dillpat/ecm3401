@@ -1,12 +1,7 @@
 class Coin:
-    """
-    
-    """
 
     def __init__(self, parentMaze, x=None, y=None, value=10, weight=0.5):
-        """
-        
-        """
+
         self._parentMaze=parentMaze
         self.x=x
         self.y=y 
@@ -37,13 +32,6 @@ class Coin:
     # Gets the cell position of the coin in the maze
     def cellPosition(self):
         return self.position
-
-    # @position.setter
-    # # Sets the new position of the coin
-    # def position(self,newpos):
-    #     self.x=newpos[0]
-    #     self.y=newpos[1]
-    #     self._position=newpos
 
     @property
     def collected(self):
