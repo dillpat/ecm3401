@@ -22,6 +22,7 @@ class COLOR(Enum):
     blue=('DeepSkyBlue4','DeepSkyBlue2')
     yellow=('yellow2','yellow2')
 
+    
 class agent:
     '''
     The agents can be placed on the maze.
@@ -29,7 +30,8 @@ class agent:
     Or they can be the physical agents (like robots)
     They can have two shapes (square or arrow)
     '''
-    def __init__(self,parentMaze,x=None,y=None,shape='square',goal=None,filled=False,footprints=False,color:COLOR=COLOR.blue):
+    def __init__(self,parentMaze,x=None,y=None,shape='square',goal=None,filled=False,footprints=False,color:COLOR=COLOR.blue,
+                health=80):
         '''
         parentmaze-->  The maze on which agent is placed.
         x,y-->  Position of the agent i.e. cell inside which agent will be placed
@@ -62,18 +64,21 @@ class agent:
         self.filled=filled
         self.shape=shape
         self._orient=0
+        # Checks that the coordinates are in the maze
         if x is None:x=parentMaze.rows
         if y is None:y=parentMaze.cols
         self.x=x
         self.y=y
         self.footprints=footprints
         self._parentMaze._agents.append(self)
+        # Sets the agents goal
         if goal==None:
             self.goal=self._parentMaze._goal
         else:
             self.goal=goal
         self._body=[]
         self.position=(self.x,self.y)
+        self.health=health
         
     @property
     def x(self):
@@ -98,6 +103,7 @@ class agent:
         else:
             self._coord=(y + w/2, x + 3*w/9,y + w/2, x + 3*w/9+w/4)
 
+        # Creating the agent shape and colour
         if(hasattr(self,'_head')):
             if self.footprints is False:
                 self._parentMaze._canvas.delete(self._head)
@@ -160,9 +166,11 @@ class agent:
                 pass
             self._parentMaze._redrawCell(self.x,self.y,theme=self._parentMaze.theme)
     @property
+    # Gets the position of the agent
     def position(self):
         return (self.x,self.y)
     @position.setter
+    # Sets the new position of the agentS
     def position(self,newpos):
         self.x=newpos[0]
         self.y=newpos[1]
@@ -208,7 +216,7 @@ class agent:
         self._parentMaze._canvas.coords(self._head,*self._coord)
         self._orient=(self._orient+1)%4
 
-
+    # Moves the agent in a direction
     def moveRight(self,event):
         if self._parentMaze.maze_map[self.x,self.y]['E']==True:
             self.y=self.y+1
@@ -270,7 +278,7 @@ class maze:
                 It will be a dictionary
         _win,_cell_width,_canvas -->    _win and )canvas are for Tkinter window and canvas
                                         _cell_width is cell width calculated automatically
-        _agents-->  A list of aganets on the maze
+        _agents-->  A list of agents on the maze
         markedCells-->  Will be used to mark some particular cell during
                         path trace by the agent.
         _
@@ -285,6 +293,8 @@ class maze:
         self._canvas=None
         self._agents=[]
         self.markCells=[]
+        self._coins=[]
+        self._enemy=[]
 
     @property
     def grid(self):
@@ -320,7 +330,7 @@ class maze:
         if x+1<=self.rows:
             self.maze_map[x+1,y]['N']=1
     
-    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark):
+    def CreateMaze(self,x=1,y=1,pattern=None,loopPercent=0,saveMaze=False,loadMaze=None,theme:COLOR=COLOR.dark,findPath=None,displayMaze=True):
         '''
         One very important function to create a Random Maze
         pattern-->  It can be 'v' for vertical or 'h' for horizontal
@@ -333,15 +343,18 @@ class maze:
         loadMaze--> Provide the CSV file to generate a desried maze
         theme--> Dark or Light
         '''
+        self._displayMaze=displayMaze
         _stack=[]
         _closed=[]
         self.theme=theme
+        # Target goal
         self._goal=(x,y)
         if(isinstance(theme,str)):
             if(theme in COLOR.__members__):
                 self.theme=COLOR[theme]
             else:
                 raise ValueError(f'{theme} is not a valid theme COLOR!')
+        # Prevents cells from being enclosed
         def blockedNeighbours(cell):
             n=[]
             for d in self.maze_map[cell].keys():
@@ -410,6 +423,7 @@ class maze:
             visited = {(self.rows,self.cols)}
             while len(frontier) > 0:
                 cell = frontier.popleft()
+                # Verify if the path in the W direction is open and finds the next cell in that direction and adds it to the nextCell
                 if self.maze_map[cell]['W'] and (cell[0],cell[1]-1) not in visited:
                     nextCell = (cell[0],cell[1]-1)
                     path[nextCell] = cell
@@ -439,6 +453,7 @@ class maze:
                 except:
                     print('Path to goal not found!')
                     return
+            #print(fwdPath)
             return fwdPath
         # if maze is to be generated randomly
         if not loadMaze:
@@ -572,8 +587,9 @@ class maze:
                     c[1]=int(c[1].rstrip(')'))
                     self.maze_map[tuple(c)]={'E':int(i[1]),'W':int(i[2]),'N':int(i[3]),'S':int(i[4])}
             self.path=BFS((self.rows,self.cols))
-        self._drawMaze(self.theme)
-        agent(self,*self._goal,shape='square',filled=True,color=COLOR.green)
+        if displayMaze:
+            self._drawMaze(self.theme)
+            agent(self,*self._goal,shape='square',filled=True,color=COLOR.green)
         if saveMaze:
             dt_string = datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
             with open(f'maze--{dt_string}.csv','w',newline='') as f:
@@ -587,16 +603,20 @@ class maze:
                 f.seek(0, os.SEEK_END)
                 f.seek(f.tell()-2, os.SEEK_SET)
                 f.truncate()
+        if findPath:
+            self.findPath=findPath
+        else: 
+            self.findPath = BFS
 
     def _drawMaze(self,theme):
         '''
         Creation of Tkinter window and maze lines
         '''
-        
-        self._LabWidth=26 # Space from the top for Labels
+        if self._displayMaze:
+            self._LabWidth=26 # Space from the top for Labels
         self._win=Tk()
         self._win.state('zoomed')
-        self._win.title('PYTHON MAZE WORLD by Learning Orbis')
+        self._win.title('MAZE Level')
         
         scr_width=self._win.winfo_screenwidth()
         scr_height=self._win.winfo_screenheight()
@@ -684,7 +704,7 @@ class maze:
         def killAgent(a):
             '''
             if the agent should be killed after it reaches the Goal or completes the path
-            '''
+            ''' 
             for i in range(len(a._body)):
                 self._canvas.delete(a._body[i])
             self._canvas.delete(a._head) 
